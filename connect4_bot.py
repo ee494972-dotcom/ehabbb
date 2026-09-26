@@ -347,7 +347,74 @@ def custom_emoji_found(msg):
     return found
 
 
+SET_PACK_WORDS = ("/setpack", "تعيين الايموجي", "تعيين الإيموجي")
+RESET_PACK_WORDS = ("/resetpack", "حذف الايموجي", "حذف الإيموجي")
+# Which card slot each emoji of the pack fills, keyed by the emoji it was uploaded with.
+PACK_SLOTS = {"🔴": engine.RED, "🟡": engine.YELLOW, "⚫": engine.EMPTY,
+              "🟥": engine.RED + "_win", "🟨": engine.YELLOW + "_win",
+              **{f"{n}⃣": f"col{n}" for n in range(1, 8)}}
+
+
+def pack_name(text):
+    """Pack short name from 't.me/addemoji/NAME', 't.me/addstickers/NAME' or a bare name."""
+    word = text.strip().rstrip("/").split("/")[-1].split("?")[0]
+    return word if word and all(ch.isalnum() or ch == "_" for ch in word) else ""
+
+
+def fetch_pack(name):
+    result = tg.api("getStickerSet", {"name": name})
+    return ((result or {}).get("result") or {}).get("stickers") or []
+
+
+def apply_custom_emoji():
+    for slot in cards.CUSTOM_EMOJI:
+        cards.CUSTOM_EMOJI[slot] = state["custom_emoji"].get(slot, "")
+
+
+def set_pack(chat_id, argument):
+    name = pack_name(argument)
+    stickers = fetch_pack(name) if name else []
+    if not stickers:
+        tg.text_send(chat_id, "• ابعت لينك الباكدج بعد الأمر، مثل:\nتعيين الايموجي t.me/addemoji/اسم_الباكدج")
+        return
+    chosen = {}
+    for sticker in stickers:
+        slot = PACK_SLOTS.get((sticker.get("emoji") or "").replace("️", ""))
+        if slot and sticker.get("custom_emoji_id") and slot not in chosen:
+            chosen[slot] = sticker["custom_emoji_id"]
+    if not chosen:
+        tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🟡 ⚫ 🟥 🟨 أو 1️⃣ لـ 7️⃣")
+        return
+    state["custom_emoji"] = chosen
+    save()
+    apply_custom_emoji()
+    missing = [slot for slot in cards.CUSTOM_EMOJI if slot not in chosen]
+    tg.text_send(chat_id, f"• تم تعيين {len(chosen)} إيموجي من الباكدج"
+                 + (f"\n• لسه عادي: {', '.join(missing)}" if missing else ""))
+
+
+def reset_pack(chat_id):
+    state["custom_emoji"] = {}
+    save()
+    apply_custom_emoji()
+    tg.text_send(chat_id, "• رجعت الرقعة للإيموجي العادي")
+
+
+def inspect_pack(chat_id, name):
+    stickers = fetch_pack(name)
+    if not stickers:
+        tg.text_send(chat_id, "• مش لاقي باكدج بالاسم ده")
+        return
+    lines = [f"{s.get('emoji') or '•'}  {s['custom_emoji_id']}" for s in stickers if s.get("custom_emoji_id")]
+    tg.text_send(chat_id, "Custom emoji IDs:\n\n" + "\n".join(lines))
+
+
 def inspect_message(msg, chat_id):
+    argument = (msg.get("text") or "").split(maxsplit=1)
+    name = pack_name(argument[1]) if len(argument) > 1 and "/" in argument[1] else ""
+    if name and not msg.get("reply_to_message"):
+        inspect_pack(chat_id, name)
+        return
     target = msg.get("reply_to_message") or msg
     found = custom_emoji_found(target)
     if not found:
@@ -434,8 +501,13 @@ def handle_message(msg, channel_post=False):
     command = command_of(text)
     first_word = text.split(maxsplit=1)[0]
     is_owner = user.get("id") == OWNER_ID
-    if is_owner and (command in INSPECT_WORDS or first_word in INSPECT_WORDS
-                     or (chat_type == "private" and not command and custom_emoji_found(msg))):
+    set_word = next((w for w in SET_PACK_WORDS if text == w or text.startswith(w + " ")), None)
+    if is_owner and set_word:
+        set_pack(chat_id, text[len(set_word):])
+    elif is_owner and (command in RESET_PACK_WORDS or text in RESET_PACK_WORDS):
+        reset_pack(chat_id)
+    elif is_owner and (command in INSPECT_WORDS or first_word in INSPECT_WORDS
+                       or (chat_type == "private" and not command and custom_emoji_found(msg))):
         inspect_message(msg, chat_id)
     elif command == "/group":
         send_group_help(chat_id)
@@ -690,6 +762,7 @@ def main():
     if not info:
         raise SystemExit("Could not reach Telegram. Check CONNECT4_TOKEN.")
     me.update(id=info["id"], username=info.get("username", ""))
+    apply_custom_emoji()
     tg.api("deleteWebhook", {"drop_pending_updates": False})
     tg.api("setMyCommands", {"commands": COMMANDS})
     print(f"@{me['username']} is running", flush=True)

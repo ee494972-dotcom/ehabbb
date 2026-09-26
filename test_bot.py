@@ -204,5 +204,27 @@ class BotTest(unittest.TestCase):
         self.say(ALI, "/cpu", GROUP)
         self.assertEqual(self.latest_game()["mode"], "lobby")
 
+    def test_owner_sets_the_discs_from_a_pack_link(self):
+        stickers = [{"emoji": "🔴", "custom_emoji_id": "11"}, {"emoji": "⚫️", "custom_emoji_id": "12"},
+                    {"emoji": "1️⃣", "custom_emoji_id": "13"}, {"emoji": "😀", "custom_emoji_id": "14"}]
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            if method == "getStickerSet":
+                real.calls.append((method, params))
+                return {"ok": True, "result": {"stickers": stickers}} if params["name"] == "C4Pack" else None
+            return real(method, params, timeout)
+
+        with mock.patch.object(tg, "api", telegram), mock.patch.dict(bot.cards.CUSTOM_EMOJI):
+            reply = self.owner_says("تعيين الايموجي https://t.me/addemoji/C4Pack")
+            self.assertIn("3", reply)
+            self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.RED], "11")
+            self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.EMPTY], "12")
+            self.assertEqual(bot.cards.CUSTOM_EMOJI["col1"], "13")
+            self.assertEqual(bot.state["custom_emoji"][engine.RED], "11")
+            self.assertIn("🔴  11", self.owner_says("فحص t.me/addemoji/C4Pack"))
+            self.owner_says("حذف الايموجي")
+            self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.RED], "")
+
 if __name__ == "__main__":
     unittest.main()

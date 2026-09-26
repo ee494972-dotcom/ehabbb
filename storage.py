@@ -5,6 +5,7 @@ from pathlib import Path
 STATE_FILE = Path(__file__).resolve().parent / "connect4_state.json"
 DEFAULTS = {
     "games": dict, "players": dict, "chat_players": dict, "channel_targets": dict,
+    "custom_emoji": dict,
     "pending": dict, "next_game": int, "offset": int, "channel": str, "channel_name": str,
 }
 
