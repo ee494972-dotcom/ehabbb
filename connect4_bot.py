@@ -20,14 +20,16 @@ MAX_VIEWERS = 12
 PLAY_WORDS = {"connect4", "connect four", "Connect4", "Connect Four",
               "اربعة", "أربعة", "اربعه", "أربعه", "اربعة في صف", "أربعة في صف"}
 GROUP_TYPES = ("group", "supergroup")
+# Ephemeral commands stay hidden from the rest of a group, and the bot may answer
+# them ephemerally within 15 seconds without being a group administrator.
 COMMANDS = [
-    {"command": "play", "description": "Start a Connect Four game"},
-    {"command": "cpu", "description": "Play the computer"},
-    {"command": "top", "description": "Leaderboard"},
-    {"command": "me", "description": "Your rating and rank"},
-    {"command": "group", "description": "Add the bot to a group"},
+    {"command": "play", "description": "Start a Connect Four game", "is_ephemeral": True},
+    {"command": "cpu", "description": "Play the computer", "is_ephemeral": True},
+    {"command": "top", "description": "Leaderboard", "is_ephemeral": True},
+    {"command": "me", "description": "Your rating and rank", "is_ephemeral": True},
+    {"command": "group", "description": "Add the bot to a group", "is_ephemeral": True},
     {"command": "channel", "description": "Post a board in your channel"},
-    {"command": "help", "description": "How to play"},
+    {"command": "help", "description": "How to play", "is_ephemeral": True},
 ]
 HELP = (
     "🔴🟡 Connect Four\n\n"
@@ -266,12 +268,33 @@ def subscribed(user_id):
     return not (member.get("status") == "restricted" and member.get("is_member") is False)
 
 
-def gate(chat_id):
-    tg.rich_send(chat_id, {"blocks": [
+def reply_to(msg, private=False):
+    """Reply options for msg. In a group the reply is ephemeral (only the sender sees it)
+    when private is set or when msg itself is an ephemeral command."""
+    reply = {}
+    if msg.get("ephemeral_message_id"):
+        reply["ephemeral_message_id"] = msg["ephemeral_message_id"]
+    elif msg.get("message_id"):
+        reply["message_id"] = msg["message_id"]
+    sender = (msg.get("from") or {}).get("id")
+    in_group = (msg.get("chat") or {}).get("type") in GROUP_TYPES
+    if in_group and sender and (private or msg.get("ephemeral_message_id")):
+        reply["receiver_user_id"] = sender
+    return reply
+
+
+def gate(msg):
+    chat_id = msg["chat"]["id"]
+    rich = {"blocks": [
         {"type": "paragraph", "text": "≋ عليك الاشتراك في قناة البوت لاستخدام الأوامر"},
-        {"type": "buttons", "buttons": [
-            {"text": "الاشتراك في القناة", "url": "https://t.me/" + state["channel"], "style": "primary"}]},
-    ]})
+        {"type": "buttons", "buttons": [{"text": "الاشتراك في القناة", "url": "https://t.me/" + state["channel"]}]},
+    ]}
+    reply = reply_to(msg, private=True)
+    if tg.rich_send(chat_id, rich, reply=reply) or "receiver_user_id" not in reply:
+        return
+    # Telegram refused the ephemeral reply (the bot is not an admin and the command was
+    # typed as a regular message), so answer with a normal reply instead.
+    tg.rich_send(chat_id, rich, reply={"message_id": msg.get("message_id")})
 
 
 def admin_message(chat_id, uid, text):
@@ -426,12 +449,12 @@ def inspect_message(msg, chat_id):
 
 # ------------------------------------------------------------- group/channel
 
-def send_group_help(chat_id):
+def send_group_help(chat_id, reply=None):
     url = f"https://t.me/{me['username']}?startgroup=play"
     tg.rich_send(chat_id, {"blocks": [{"type": "paragraph", "text": [
         "Add this bot to any of your groups, then send /play.\nOr just follow this link – ",
         {"type": "url", "text": f"t.me/{me['username']}?startgroup=play", "url": url},
-    ]}]})
+    ]}]}, reply=reply)
 
 
 def send_channel_help(chat_id):
@@ -509,18 +532,18 @@ def handle_message(msg, channel_post=False):
                        or (chat_type == "private" and not command and custom_emoji_found(msg))):
         inspect_message(msg, chat_id)
     elif command == "/group":
-        send_group_help(chat_id)
+        send_group_help(chat_id, reply_to(msg))
     elif command == "/channel":
         send_channel_help(chat_id)
     elif command == "/help":
-        tg.text_send(chat_id, HELP)
+        tg.text_send(chat_id, HELP, reply=reply_to(msg))
     elif command == "/top":
-        tg.text_send(chat_id, leaderboard(chat_id, chat_type))
+        tg.text_send(chat_id, leaderboard(chat_id, chat_type), reply=reply_to(msg))
     elif command == "/me" and user.get("id"):
-        tg.text_send(chat_id, my_stats(user))
+        tg.text_send(chat_id, my_stats(user), reply=reply_to(msg))
     elif command in ("/start", "/play", "/connect4", "/cpu") or text in PLAY_WORDS:
         if not subscribed(uid):
-            gate(chat_id)
+            gate(msg)
         elif channel_post or chat_type == "channel" or (chat_type in GROUP_TYPES and command == "/cpu"):
             # A shared board: each presser plays their own game in an ephemeral view.
             start_lobby(chat_id, uid)

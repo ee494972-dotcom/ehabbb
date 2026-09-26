@@ -33,11 +33,24 @@ def api(method, params=None, timeout=45):
         return None
 
 
-def rich_send(chat_id, rich, reply_markup=None):
+def with_reply(params, reply):
+    """Add reply options: message_id or ephemeral_message_id to reply to, and receiver_user_id
+    to make the message ephemeral (visible only to that user in a group)."""
+    if not reply:
+        return params
+    target = {key: reply[key] for key in ("message_id", "ephemeral_message_id") if reply.get(key)}
+    if target:
+        params["reply_parameters"] = {**target, "allow_sending_without_reply": True}
+    if reply.get("receiver_user_id"):
+        params["ephemeral_message_parameters"] = {"receiver_user_id": reply["receiver_user_id"]}
+    return params
+
+
+def rich_send(chat_id, rich, reply_markup=None, reply=None):
     params = {"chat_id": chat_id, "rich_message": rich}
     if reply_markup is not None:
         params["reply_markup"] = reply_markup
-    return api("sendRichMessage", params)
+    return api("sendRichMessage", with_reply(params, reply))
 
 
 def rich_edit(chat_id, message_id, rich):
@@ -65,11 +78,11 @@ def rich_ephemeral_edit(chat_id, user_id, ephemeral_message_id, rich):
     })
 
 
-def text_send(chat_id, text, reply_markup=None):
+def text_send(chat_id, text, reply_markup=None, reply=None):
     params = {"chat_id": chat_id, "text": text}
     if reply_markup is not None:
         params["reply_markup"] = reply_markup
-    return api("sendMessage", params)
+    return api("sendMessage", with_reply(params, reply))
 
 
 def answer(query_id, text="", alert=False):

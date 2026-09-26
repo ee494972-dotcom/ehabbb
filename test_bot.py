@@ -229,5 +229,41 @@ class BotTest(unittest.TestCase):
             self.owner_says("حذف الايموجي")
             self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.RED], "")
 
+    def test_group_gate_is_an_ephemeral_reply_to_an_ephemeral_command(self):
+        bot.state["channel"] = "news"
+        with mock.patch.object(bot, "subscribed", return_value=False):
+            bot.handle_message({"from": ALI, "chat": GROUP, "text": "/play", "message_id": 7,
+                                "ephemeral_message_id": 70})
+        method, params = self.tg.calls[-1]
+        self.assertEqual(method, "sendRichMessage")
+        self.assertEqual(params["reply_parameters"]["ephemeral_message_id"], 70)
+        self.assertEqual(params["ephemeral_message_parameters"], {"receiver_user_id": 11})
+        self.assertNotIn("style", json.dumps(params["rich_message"]))
+        self.assertEqual(bot.state["games"], {})
+
+    def test_group_gate_falls_back_to_a_normal_reply_when_ephemeral_is_refused(self):
+        bot.state["channel"] = "news"
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            if "ephemeral_message_parameters" in (params or {}):
+                real.calls.append((method, params))
+                return None
+            return real(method, params, timeout)
+
+        with mock.patch.object(bot, "subscribed", return_value=False), mock.patch.object(tg, "api", telegram):
+            bot.handle_message({"from": ALI, "chat": GROUP, "text": "/play", "message_id": 7})
+        first, second = self.tg.calls[-2][1], self.tg.calls[-1][1]
+        self.assertEqual(first["ephemeral_message_parameters"], {"receiver_user_id": 11})
+        self.assertNotIn("ephemeral_message_parameters", second)
+        self.assertEqual(second["reply_parameters"]["message_id"], 7)
+
+    def test_ephemeral_commands_get_ephemeral_answers(self):
+        bot.handle_message({"from": ALI, "chat": GROUP, "text": "/top", "message_id": 8,
+                            "ephemeral_message_id": 80})
+        params = self.tg.calls[-1][1]
+        self.assertEqual(params["ephemeral_message_parameters"], {"receiver_user_id": 11})
+        self.assertEqual(params["reply_parameters"]["ephemeral_message_id"], 80)
+
 if __name__ == "__main__":
     unittest.main()
