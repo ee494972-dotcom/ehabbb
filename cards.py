@@ -203,8 +203,6 @@ def pvp_card(game, players, premium=False):
         blocks.append(quote(status))
         if history:
             blocks.append(move_details(game))
-        if has_custom_emoji() and not premium:
-            blocks.append(button_row(button("✨ Open Board", base + "view", "primary")))
         blocks.append(button_row(button("🏳️ Resign", base + "resign")))
     else:
         blocks.append(quote(pvp_result(game)))

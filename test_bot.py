@@ -195,13 +195,41 @@ class BotTest(unittest.TestCase):
             self.press(MONA, game, "join")
             public = json.dumps(bot.render(game))
             self.assertNotIn('"900"', public)
-            self.assertIn(":view", public)
-            self.press(SARA, game, "view")
-            self.assertIn("33", game["views"])
+            self.assertNotIn(":view", public)
+
+    def non_admin_telegram(self):
+        """Ephemeral sends without the receiver's own button press are refused, as for a non-admin bot."""
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            ephemeral = (params or {}).get("ephemeral_message_parameters")
+            if ephemeral and not ephemeral.get("callback_query_id"):
+                real.calls.append((method, params))
+                return None
+            return real(method, params, timeout)
+        return telegram
+
+    def test_challenge_boards_turn_premium_on_accept_and_first_move(self):
+        with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}), \
+                mock.patch.object(tg, "api", self.non_admin_telegram()):
+            self.say(ALI, "/play", GROUP)
+            game = self.latest_game()
+            self.press(MONA, game, "join")
+            self.assertEqual(list(game["views"]), ["22"])
             self.press(ALI, game, "col:3")
+            self.assertEqual(sorted(game["views"]), ["11", "22"])
+            self.press(MONA, game, "col:3", ephemeral_id=game["views"]["22"])
             edits = [p for m, p in self.tg.calls if m == "editEphemeralMessageText"]
-            self.assertEqual(edits[-1]["receiver_user_id"], 33)
+            self.assertEqual({p["receiver_user_id"] for p in edits[-2:]}, {11, 22})
             self.assertIn('"900"', json.dumps(edits[-1]["rich_message"]))
+            self.assertEqual(len(game["history"]), 2)
+
+    def test_admin_bot_gives_the_creator_a_premium_board_on_accept(self):
+        with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
+            self.say(ALI, "/play", GROUP)
+            game = self.latest_game()
+            self.press(MONA, game, "join")
+            self.assertEqual(sorted(game["views"]), ["11", "22"])
 
     def test_group_cpu_posts_a_shared_board(self):
         self.say(ALI, "/cpu", GROUP)

@@ -16,7 +16,6 @@ TOKEN = os.environ.get("CONNECT4_TOKEN", "")
 OWNER_ID = int(os.environ.get("CONNECT4_OWNER_ID", "8555191642"))
 ELO_K = 32
 DAY = 24 * 60 * 60
-MAX_VIEWERS = 12
 PLAY_WORDS = {"connect4", "connect four", "Connect4", "Connect Four",
               "اربعة", "أربعة", "اربعه", "أربعه", "اربعة في صف", "أربعة في صف"}
 GROUP_TYPES = ("group", "supergroup")
@@ -666,33 +665,29 @@ def cpu_press(qid, game, kind, value, user, view):
     refresh(game, **view)
 
 
-def open_view(qid, game, user, view):
-    """Show the pressing user a premium copy of the board that follows every move."""
-    uid = str(user.get("id"))
-    views = game.setdefault("views", {})
-    if game["phase"] != "play":
-        tg.answer(qid)
+def give_premium_view(game, user_id, chat_id, qid=None):
+    """Swap this player's copy of the public card for an ephemeral premium board.
+
+    With the player's own button press (qid) any bot may do this for 15 seconds;
+    without one Telegram only allows it when the bot is a group administrator.
+    """
+    if not cards.has_custom_emoji() or str(user_id) in game.setdefault("views", {}):
         return
-    if uid not in views and len(views) >= MAX_VIEWERS:
-        tg.answer(qid, "Too many people are watching this game right now", True)
-        return
-    sent = tg.rich_ephemeral_send(view["chat_id"] or game["chat"], user["id"], qid, render(game, True))
+    rich = render(game, True)
+    if qid:
+        sent = tg.rich_ephemeral_send(chat_id, user_id, qid, rich)
+    else:
+        sent = tg.rich_send(chat_id, rich, reply={"receiver_user_id": user_id})
     ephemeral_id = ((sent or {}).get("result") or {}).get("ephemeral_message_id")
-    if not ephemeral_id:
-        tg.answer(qid, "Could not open the board here. Please try again.", True)
-        return
-    views[uid] = ephemeral_id
-    save()
-    tg.answer(qid)
+    if ephemeral_id:
+        game["views"][str(user_id)] = ephemeral_id
 
 
 def pvp_press(qid, game, kind, value, user, view):
     uid = str(user.get("id"))
     seats, names = game["players"], game["names"]
     seated = uid in (seats[engine.RED], seats[engine.YELLOW])
-    if kind == "view":
-        open_view(qid, game, user, view)
-        return
+    chat = view["chat_id"] or game["chat"]
     if game["phase"] == "waiting":
         if kind == "join":
             if uid == seats[engine.RED]:
@@ -704,18 +699,25 @@ def pvp_press(qid, game, kind, value, user, view):
             remember(user, game["chat"])
             seats[engine.YELLOW], names[engine.YELLOW] = uid, display_name(user)
             game["phase"], game["turn_started"] = "play", time.time()
+            give_premium_view(game, user["id"], chat, qid)
+            give_premium_view(game, int(seats[engine.RED]), chat)
             tg.answer(qid, "Game on! 🔴 moves first")
         elif kind in ("cpu", "cancel"):
             if uid != seats[engine.RED]:
                 tg.answer(qid, "Only the player who opened the challenge can do that", True)
                 return
-            tg.answer(qid)
             if kind == "cancel":
                 game["phase"], game["reason"] = "over", "cancelled"
             else:
                 game.pop("invited", None)
                 seats[engine.YELLOW], names[engine.YELLOW] = "cpu", cards.COMPUTER_NAME
                 game.update(mode="cpu", level="normal", phase="play")
+                if cards.has_custom_emoji():
+                    sent = tg.rich_ephemeral_send(chat, user["id"], qid, render(game, True))
+                    ephemeral_id = ((sent or {}).get("result") or {}).get("ephemeral_message_id")
+                    if ephemeral_id:
+                        game["ephemeral_message_id"] = ephemeral_id
+            tg.answer(qid)
         else:
             tg.answer(qid)
             return
@@ -735,8 +737,9 @@ def pvp_press(qid, game, kind, value, user, view):
             if game["board"][col] != engine.EMPTY:
                 tg.answer(qid, "That column is full – pick another")
                 return
-            tg.answer(qid)
             play_column(game, col)
+            give_premium_view(game, user["id"], chat, qid)
+            tg.answer(qid)
         elif kind == "resign":
             tg.answer(qid, "You resigned")
             mine = engine.RED if uid == seats[engine.RED] else engine.YELLOW
