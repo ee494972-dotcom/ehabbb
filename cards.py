@@ -15,6 +15,9 @@ CUSTOM_EMOJI = {
     engine.RED: "", engine.YELLOW: "", engine.EMPTY: "",
     engine.RED + "_win": "", engine.YELLOW + "_win": "",
 }
+# The emoji each custom emoji was uploaded with. Telegram rejects edits whose
+# alternative_text doesn't match it, so it is sent in place of the standard emoji.
+CUSTOM_ALT = {}
 
 
 def rank_title(rating):
@@ -70,7 +73,8 @@ def has_custom_emoji():
 def emoji(key, fallback, premium):
     custom_id = CUSTOM_EMOJI.get(key) if premium else None
     if custom_id:
-        return {"type": "custom_emoji", "custom_emoji_id": custom_id, "alternative_text": fallback}
+        return {"type": "custom_emoji", "custom_emoji_id": custom_id,
+                "alternative_text": CUSTOM_ALT.get(key) or fallback}
     return fallback
 
 

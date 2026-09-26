@@ -4,6 +4,7 @@
 Private chat: play the computer. Groups: rated challenges between two players.
 Channels: one posted board where every reader opens a private game.
 """
+import json
 import os
 import time
 
@@ -179,10 +180,30 @@ def send_card(chat_id, game):
     return sent
 
 
+def retry_after():
+    """Seconds Telegram asked to wait after the last call (flood control), else 0."""
+    try:
+        return int(json.loads(tg.last_error).get("parameters", {}).get("retry_after", 0))
+    except (ValueError, AttributeError):
+        return 0
+
+
+def with_retry(call):
+    """Run an edit; on flood control wait as asked and run it once more."""
+    result = call()
+    wait = retry_after()
+    if not result and wait:
+        time.sleep(min(wait, 10))
+        result = call()
+    return result
+
+
 def edit_card(chat_id, message_id, game):
-    if tg.rich_edit(chat_id, message_id, render(game, True)) or not cards.has_custom_emoji():
+    premium = render(game, True)
+    if with_retry(lambda: tg.rich_edit(chat_id, message_id, premium)) or not cards.has_custom_emoji():
         return
-    if "not modified" not in tg.last_error:
+    # Fall back to standard emoji only when Telegram refused the edit itself.
+    if "not modified" not in tg.last_error and not retry_after():
         tg.rich_edit(chat_id, message_id, render(game))
 
 
@@ -199,12 +220,14 @@ def refresh(game, chat_id=None, message_id=None, user_id=None):
         # One public card for the group plus each player's ephemeral premium board.
         if game.get("message_id"):
             edit_card(game["chat"], game["message_id"], game)
+        premium = render(game, True)
         for viewer, ephemeral_id in game.get("views", {}).items():
-            tg.rich_ephemeral_edit(game["chat"], int(viewer), ephemeral_id, render(game, True))
+            with_retry(lambda: tg.rich_ephemeral_edit(game["chat"], int(viewer), ephemeral_id, premium))
         return
     ephemeral_id = game.get("ephemeral_message_id")
     if ephemeral_id and user_id:
-        tg.rich_ephemeral_edit(chat_id or game["chat"], user_id, ephemeral_id, render(game, True))
+        premium = render(game, True)
+        with_retry(lambda: tg.rich_ephemeral_edit(chat_id or game["chat"], user_id, ephemeral_id, premium))
         return
     if message_id:
         target = chat_id or game["chat"]
@@ -401,6 +424,8 @@ def fetch_pack(name):
 def apply_custom_emoji():
     for slot in cards.CUSTOM_EMOJI:
         cards.CUSTOM_EMOJI[slot] = state["custom_emoji"].get(slot, "")
+    cards.CUSTOM_ALT.clear()
+    cards.CUSTOM_ALT.update(state["custom_emoji_alt"])
 
 
 def set_pack(chat_id, argument):
@@ -409,19 +434,20 @@ def set_pack(chat_id, argument):
     if not stickers:
         tg.text_send(chat_id, "• ابعت لينك الباكدج بعد الأمر، مثل:\nتعيين الايموجي t.me/addemoji/اسم_الباكدج")
         return
-    chosen = {}
+    chosen, alts = {}, {}
     for sticker in stickers:
         slot = PACK_SLOTS.get((sticker.get("emoji") or "").replace("️", ""))
         if slot and sticker.get("custom_emoji_id") and slot not in chosen:
-            chosen[slot] = sticker["custom_emoji_id"]
+            chosen[slot], alts[slot] = sticker["custom_emoji_id"], sticker.get("emoji") or ""
     ids = [s.get("custom_emoji_id") for s in stickers]
     if len(chosen) < len(PACK_ORDER) and len(ids) == len(PACK_ORDER) and all(ids):
         # The emoji tags don't cover every slot, so trust the upload order of emoji/pack instead.
         chosen = dict(zip(PACK_ORDER, ids))
+        alts = dict(zip(PACK_ORDER, (s.get("emoji") or "" for s in stickers)))
     if not chosen:
         tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🔵 ⚫ 🟥 🟦")
         return
-    state["custom_emoji"] = chosen
+    state["custom_emoji"], state["custom_emoji_alt"] = chosen, alts
     save()
     apply_custom_emoji()
     missing = [slot for slot in cards.CUSTOM_EMOJI if slot not in chosen]
@@ -430,7 +456,7 @@ def set_pack(chat_id, argument):
 
 
 def reset_pack(chat_id):
-    state["custom_emoji"] = {}
+    state["custom_emoji"], state["custom_emoji_alt"] = {}, {}
     save()
     apply_custom_emoji()
     tg.text_send(chat_id, "• رجعت الرقعة للإيموجي العادي")

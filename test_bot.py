@@ -329,5 +329,43 @@ class BotTest(unittest.TestCase):
                                                           engine.RED + "_win": "rw", engine.YELLOW: "y",
                                                           engine.YELLOW + "_win": "yw"})
 
+    def test_pack_emoji_keep_their_uploaded_emoji_as_fallback(self):
+        stickers = [{"emoji": "🔴", "custom_emoji_id": "e"}, {"emoji": "😀", "custom_emoji_id": "r"},
+                    {"emoji": "🟥", "custom_emoji_id": "rw"}, {"emoji": "🟡", "custom_emoji_id": "y"},
+                    {"emoji": "🟨", "custom_emoji_id": "yw"}]
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            if method == "getStickerSet":
+                return {"ok": True, "result": {"stickers": stickers}}
+            return real(method, params, timeout)
+
+        with mock.patch.object(tg, "api", telegram), mock.patch.dict(bot.cards.CUSTOM_EMOJI), \
+                mock.patch.dict(bot.cards.CUSTOM_ALT, clear=True):
+            self.owner_says("تعيين الايموجي t.me/addemoji/PlayConnectX")
+            self.say(ALI, "/start")
+            cells = bot.render(self.latest_game(), True)["blocks"][1]["cells"]
+            empty = cells[0][0]["text"]["button"]["text"]
+            self.assertEqual((empty["custom_emoji_id"], empty["alternative_text"]), ("e", "🔴"))
+
+    def test_flood_control_retries_the_premium_edit(self):
+        real, refused = self.tg, []
+
+        def telegram(method, params=None, timeout=45):
+            if method == "editMessageText" and not refused:
+                refused.append(params)
+                tg.last_error = '{"ok":false,"error_code":429,"parameters":{"retry_after":1}}'
+                return None
+            return real(method, params, timeout)
+
+        with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
+            self.say(ALI, "/start")
+            game = self.latest_game()
+            with mock.patch.object(tg, "api", telegram), mock.patch.object(bot.time, "sleep") as sleep:
+                self.press(ALI, game, "level:hard")
+        sleep.assert_called_once_with(1)
+        edits = [p for m, p in self.tg.calls if m == "editMessageText"]
+        self.assertIn('"900"', json.dumps(edits[-1]["rich_message"]))
+
 if __name__ == "__main__":
     unittest.main()
