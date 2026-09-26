@@ -16,29 +16,30 @@ TOKEN = os.environ.get("CONNECT4_TOKEN", "")
 OWNER_ID = int(os.environ.get("CONNECT4_OWNER_ID", "8555191642"))
 ELO_K = 32
 DAY = 24 * 60 * 60
-PLAY_WORDS = {"اربعة", "أربعة", "اربعه", "أربعه", "اربعة في صف", "أربعة في صف"}
+PLAY_WORDS = {"connect4", "connect four", "Connect4", "Connect Four",
+              "اربعة", "أربعة", "اربعه", "أربعه", "اربعة في صف", "أربعة في صف"}
 GROUP_TYPES = ("group", "supergroup")
 COMMANDS = [
-    {"command": "play", "description": "ابدأ لعبة أربعة في صف"},
-    {"command": "cpu", "description": "العب ضد الكمبيوتر"},
-    {"command": "top", "description": "ترتيب اللاعبين"},
-    {"command": "me", "description": "نقاطك ومستواك"},
-    {"command": "group", "description": "ضيف البوت لجروب"},
-    {"command": "channel", "description": "انشر رقعة في قناتك"},
-    {"command": "help", "description": "طريقة اللعب"},
+    {"command": "play", "description": "Start a Connect Four game"},
+    {"command": "cpu", "description": "Play the computer"},
+    {"command": "top", "description": "Leaderboard"},
+    {"command": "me", "description": "Your rating and rank"},
+    {"command": "group", "description": "Add the bot to a group"},
+    {"command": "channel", "description": "Post a board in your channel"},
+    {"command": "help", "description": "How to play"},
 ]
 HELP = (
-    "🔴🟡 أربعة في صف\n\n"
-    "كل لاعب بدوره ينزّل قطعة في عمود، وأول واحد يكمّل 4 من لونه في صف "
-    "(أفقي أو رأسي أو مايل) يكسب.\n\n"
-    "• /play في الخاص: العب ضد الكمبيوتر\n"
-    "• /play في الجروب: ابدأ تحدي وأي حد يقدر يقبله. ولو عملت رد على رسالة حد، التحدي بيبقى ليه هو بس\n"
-    "• /cpu في الجروب: العب ضد الكمبيوتر\n"
-    "• /top: ترتيب اللاعبين\n"
-    "• /me: نقاطك ومستواك\n"
-    "• /group: ضيف البوت لجروب\n"
-    "• /channel: انشر رقعة في قناتك\n\n"
-    f"في التحديات كل لاعب ليه {cards.TURN_SECONDS} ثانية للحركة، واللي وقته يخلص يخسر."
+    "🔴🟡 Connect Four\n\n"
+    "Take turns dropping a disc into a column – it falls to the lowest free space. "
+    "The first to connect 4 of their colour in a row (across, down or diagonally) wins.\n\n"
+    "• /play in private: play the computer\n"
+    "• /play in a group: open a challenge anyone can accept. Reply to someone's message to challenge only them\n"
+    "• /cpu in a group: play the computer\n"
+    "• /top: leaderboard\n"
+    "• /me: your rating and rank\n"
+    "• /group: add the bot to a group\n"
+    "• /channel: post a board in your channel\n\n"
+    f"In challenges each player has {cards.TURN_SECONDS} seconds per move – run out of time and you lose."
 )
 
 state = storage.load()
@@ -55,12 +56,12 @@ def game_key(chat, game_id):
 
 def display_name(user):
     name = " ".join(part for part in (user.get("first_name"), user.get("last_name")) if part)
-    return name.strip() or user.get("username") or "لاعب"
+    return name.strip() or user.get("username") or "Player"
 
 
 def player(uid):
     return state["players"].setdefault(str(uid), {
-        "name": "لاعب", "rating": cards.START_RATING, "wins": 0, "losses": 0, "draws": 0})
+        "name": "Player", "rating": cards.START_RATING, "wins": 0, "losses": 0, "draws": 0})
 
 
 def remember(user, chat_id=None):
@@ -210,15 +211,15 @@ def ordinal(position):
 
 def leaderboard(chat_id, chat_type):
     if chat_type in GROUP_TYPES:
-        ids, title = state["chat_players"].get(str(chat_id), []), "🏆 ترتيب الجروب"
+        ids, title = state["chat_players"].get(str(chat_id), []), "🏆 Group leaderboard"
     else:
-        ids, title = list(state["players"]), "🏆 أحسن اللاعبين"
+        ids, title = list(state["players"]), "🏆 Top players"
     rows = [state["players"][uid] for uid in ids if uid in state["players"]]
     rows = [p for p in rows if p["wins"] + p["losses"] + p["draws"]]
     if not rows:
-        return f"{title}\n\nلسه محدش لعب تحدي. ابدأ واحد بـ /play في أي جروب."
+        return f"{title}\n\nNo challenges played yet. Start one with /play in any group."
     rows.sort(key=lambda p: p["rating"], reverse=True)
-    lines = [f"{ordinal(n)} {p['name']}: {p['rating']} نقطة ({p['wins']} فوز · {p['losses']} خسارة)"
+    lines = [f"{ordinal(n)} {p['name']} – {p['rating']} ({p['wins']}W · {p['losses']}L · {p['draws']}D)"
              for n, p in enumerate(rows[:10])]
     return title + "\n\n" + "\n".join(lines)
 
@@ -229,9 +230,9 @@ def my_stats(user):
     ranked = sorted(state["players"].values(), key=lambda p: p["rating"], reverse=True)
     position = next(n for n, p in enumerate(ranked, 1) if p is stats)
     return (f"👤 {stats['name']}\n"
-            f"النقاط: {stats['rating']} · {cards.rank_title(stats['rating'])}\n"
-            f"فوز: {stats['wins']} · خسارة: {stats['losses']} · تعادل: {stats['draws']}\n"
-            f"ترتيبك: {position} من {len(ranked)}")
+            f"Rating: {stats['rating']} · {cards.rank_title(stats['rating'])}\n"
+            f"Wins: {stats['wins']} · Losses: {stats['losses']} · Draws: {stats['draws']}\n"
+            f"Rank: #{position} of {len(ranked)}")
 
 
 # ------------------------------------------------------ subscription + admin
@@ -300,19 +301,46 @@ def admin_message(chat_id, uid, text):
     return True
 
 
+def custom_emoji_ids(value):
+    """Collect custom emoji ids from message entities and rich blocks alike."""
+    found = []
+    if isinstance(value, dict):
+        if value.get("type") == "custom_emoji" and value.get("custom_emoji_id"):
+            found.append(str(value["custom_emoji_id"]))
+        for child in value.values():
+            found += custom_emoji_ids(child)
+    elif isinstance(value, list):
+        for child in value:
+            found += custom_emoji_ids(child)
+    return list(dict.fromkeys(found))
+
+
+def inspect_reply(msg, chat_id):
+    target = msg.get("reply_to_message")
+    if not target:
+        tg.text_send(chat_id, "Reply to a message that contains custom emoji, then send /inspect.")
+        return
+    ids = custom_emoji_ids(target)
+    if not ids:
+        tg.text_send(chat_id, "No custom emoji found in that message.")
+        return
+    tg.text_send(chat_id, "Custom emoji IDs:\n" + "\n".join(ids) +
+                 "\n\nPut the ones you want in CUSTOM_EMOJI to change how the discs look.")
+
+
 # ------------------------------------------------------------- group/channel
 
 def send_group_help(chat_id):
     url = f"https://t.me/{me['username']}?startgroup=play"
     tg.rich_send(chat_id, {"blocks": [{"type": "paragraph", "text": [
-        "ضيف البوت لأي جروب، وبعدين ابعت /play عشان تبدأ تحدي.\nأو افتح اللينك ده: ",
+        "Add this bot to any of your groups, then send /play.\nOr just follow this link – ",
         {"type": "url", "text": f"t.me/{me['username']}?startgroup=play", "url": url},
     ]}]})
 
 
 def send_channel_help(chat_id):
     picker = {"keyboard": [[{
-        "text": "اختار قناة",
+        "text": "Choose a channel",
         "request_chat": {
             "request_id": 1,
             "chat_is_channel": True,
@@ -321,9 +349,9 @@ def send_channel_help(chat_id):
         },
     }]], "resize_keyboard": True, "one_time_keyboard": True}
     tg.rich_send(chat_id, {"blocks": [{"type": "paragraph", "text":
-        "اختار قناة وأنا هنزّل فيها رقعة. كل واحد يضغط عليها هتتفتحله لعبة خاصة بيه ضد الكمبيوتر، "
-        "ومحدش هيشوف حركات التاني.\n\nلازم تكون أدمن في القناة وتقدر تنشر فيها. "
-        "البوت محتاج صلاحية النشر بس."}]}, reply_markup=picker)
+        "Pick a channel and I will post a board in it. Everyone reading it gets their own game "
+        "against the computer, and nobody sees anyone else's moves.\n\nYou need to be able to post "
+        "there yourself. All I ask for is the right to post – the board is never edited once it is up."}]}, reply_markup=picker)
 
 
 def handle_shared_channel(msg):
@@ -338,14 +366,14 @@ def handle_shared_channel(msg):
     status = member.get("status")
     if status not in ("administrator", "creator") or (
             status == "administrator" and not member.get("can_post_messages", False)):
-        tg.text_send(private_chat, "لازم البوت يكون أدمن في القناة ومعاه صلاحية النشر.",
+        tg.text_send(private_chat, "The bot must be an administrator with permission to post messages in that channel.",
                      {"remove_keyboard": True})
         return
     info = tg.api("getChat", {"chat_id": channel_id})
-    title = (info or {}).get("result", {}).get("title") or shared.get("title") or "القناة"
+    title = (info or {}).get("result", {}).get("title") or shared.get("title") or "channel"
     state["channel_targets"][str(user_id)] = {"chat_id": str(channel_id), "title": title}
     save()
-    tg.text_send(private_chat, f"تم اختيار {title}. بنزّل الرقعة دلوقتي.", {"remove_keyboard": True})
+    tg.text_send(private_chat, f"Channel selected: {title}. Posting the board now.", {"remove_keyboard": True})
     start_lobby(channel_id, user_id)
 
 
@@ -374,15 +402,17 @@ def handle_message(msg, channel_post=False):
     if admin_message(chat_id, uid, text):
         return
     command = command_of(text)
-    if command == "/group":
+    if command == "/inspect" and uid == OWNER_ID:
+        inspect_reply(msg, chat_id)
+    elif command == "/group":
         send_group_help(chat_id)
     elif command == "/channel":
         send_channel_help(chat_id)
-    elif command == "/help" or text == "مساعدة":
+    elif command == "/help":
         tg.text_send(chat_id, HELP)
-    elif command == "/top" or text in ("الترتيب", "التوب"):
+    elif command == "/top":
         tg.text_send(chat_id, leaderboard(chat_id, chat_type))
-    elif (command == "/me" or text == "نقاطي") and user.get("id"):
+    elif command == "/me" and user.get("id"):
         tg.text_send(chat_id, my_stats(user))
     elif command in ("/start", "/play", "/connect4", "/cpu") or text in PLAY_WORDS:
         if not subscribed(uid):
@@ -413,7 +443,7 @@ def handle_callback(query):
     value = parts[4] if len(parts) > 4 else ""
     game = state["games"].get(game_key(chat, game_id))
     if not game:
-        tg.answer(qid, "اللعبة دي خلصت. ابدأ واحدة جديدة بـ /play", True)
+        tg.answer(qid, "This game has ended. Start a new one with /play", True)
         return
     view = {"chat_id": (message.get("chat") or {}).get("id"),
             "message_id": message.get("message_id"), "user_id": user.get("id")}
@@ -452,15 +482,15 @@ def lobby_press(qid, game, kind, value, user, view):
     if private and private.get("result"):
         user_game["message_id"] = private["result"].get("message_id")
         save()
-        tg.answer(qid, "فتحتلك اللعبة في الخاص مع البوت")
+        tg.answer(qid, "Game opened in your private chat")
         return
     del state["games"][game_key(user_game["chat"], user_game["id"])]
-    tg.answer(qid, "افتح البوت في الخاص الأول، وبعدين ارجع اضغط ابدأ اللعب", True)
+    tg.answer(qid, "Open the bot privately first, then press Play Game", True)
 
 
 def cpu_press(qid, game, kind, value, user, view):
     if str(user.get("id")) != game["owner"]:
-        tg.answer(qid, "اللعبة دي مش بتاعتك. ابدأ لعبتك بـ /play", True)
+        tg.answer(qid, "This game is not yours. Start your own with /play", True)
         return
     playing = game["phase"] == "play"
     if kind == "col":
@@ -469,10 +499,10 @@ def cpu_press(qid, game, kind, value, user, view):
             tg.answer(qid)
             return
         if game["turn"] != engine.RED:
-            tg.answer(qid, "استنى الكمبيوتر يلعب")
+            tg.answer(qid, "Wait for the computer")
             return
         if game["board"][col] != engine.EMPTY:
-            tg.answer(qid, "العمود ده مليان، اختار عمود تاني")
+            tg.answer(qid, "That column is full – pick another")
             return
         # Answer before the computer thinks so the button spinner stops at once.
         tg.answer(qid)
@@ -481,7 +511,7 @@ def cpu_press(qid, game, kind, value, user, view):
             refresh(game, **view)
             computer_reply(game)
     elif kind == "level" and playing and not game["history"] and value in engine.LEVELS:
-        tg.answer(qid, "المستوى: " + cards.LEVEL_NAMES[value])
+        tg.answer(qid, "Level: " + cards.LEVEL_NAMES[value])
         game["level"] = value
     elif kind == "undo" and playing and len(game["history"]) >= 2:
         tg.answer(qid)
@@ -506,18 +536,18 @@ def pvp_press(qid, game, kind, value, user, view):
     if game["phase"] == "waiting":
         if kind == "join":
             if uid == seats[engine.RED]:
-                tg.answer(qid, "مستنيين حد يقبل تحديك")
+                tg.answer(qid, "Waiting for someone to accept your challenge")
                 return
             if game.get("invited") and uid != game["invited"]:
-                tg.answer(qid, f"التحدي ده لـ {game['invited_name']} بس", True)
+                tg.answer(qid, f"This challenge is for {game['invited_name']} only", True)
                 return
             remember(user, game["chat"])
             seats[engine.YELLOW], names[engine.YELLOW] = uid, display_name(user)
             game["phase"], game["turn_started"] = "play", time.time()
-            tg.answer(qid, "يلا بينا! 🔴 بيبدأ")
+            tg.answer(qid, "Game on! 🔴 moves first")
         elif kind in ("cpu", "cancel"):
             if uid != seats[engine.RED]:
-                tg.answer(qid, "صاحب التحدي بس اللي يقدر يعمل كده", True)
+                tg.answer(qid, "Only the player who opened the challenge can do that", True)
                 return
             tg.answer(qid)
             if kind == "cancel":
@@ -531,8 +561,8 @@ def pvp_press(qid, game, kind, value, user, view):
             return
     elif game["phase"] == "play":
         if not seated:
-            tg.answer(qid, f"اللعبة دي بين {names[engine.RED]} و{names[engine.YELLOW]}. "
-                           "ابدأ تحدي جديد بـ /play", True)
+            tg.answer(qid, f"This game is between {names[engine.RED]} and {names[engine.YELLOW]}. "
+                           "Start your own with /play", True)
             return
         if kind == "col":
             col = parse_column(value)
@@ -540,15 +570,15 @@ def pvp_press(qid, game, kind, value, user, view):
                 tg.answer(qid)
                 return
             if uid != seats[game["turn"]]:
-                tg.answer(qid, "مش دورك، استنى منافسك")
+                tg.answer(qid, "Not your turn – wait for your opponent")
                 return
             if game["board"][col] != engine.EMPTY:
-                tg.answer(qid, "العمود ده مليان، اختار عمود تاني")
+                tg.answer(qid, "That column is full – pick another")
                 return
             tg.answer(qid)
             play_column(game, col)
         elif kind == "resign":
-            tg.answer(qid, "استسلمت")
+            tg.answer(qid, "You resigned")
             mine = engine.RED if uid == seats[engine.RED] else engine.YELLOW
             finish(game, engine.other(mine), reason="resign")
         else:

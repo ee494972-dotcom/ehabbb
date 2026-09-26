@@ -3,18 +3,25 @@ import engine
 
 TURN_SECONDS = 60
 START_RATING = 1000
-COMPUTER_NAME = "الكمبيوتر"
-DISC = {engine.RED: "🔴", engine.YELLOW: "🟡", engine.EMPTY: "⚪"}
+COMPUTER_NAME = "Computer"
+DISC = {engine.RED: "🔴", engine.YELLOW: "🟡", engine.EMPTY: "⚫"}
 WIN_DISC = {engine.RED: "🟥", engine.YELLOW: "🟨"}
-LEVEL_NAMES = {"easy": "سهل", "normal": "متوسط", "hard": "صعب"}
-TITLES = ((1500, "أسطورة 👑"), (1300, "خبير 💎"), (1150, "محترف 🔥"), (1000, "هاوي ⭐"))
+COLUMN_KEYS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣")
+LEVEL_NAMES = {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
+TITLES = ((1500, "Legend 👑"), (1300, "Expert 💎"), (1150, "Pro 🔥"), (1000, "Amateur ⭐"))
+# Optional Telegram custom emoji ids (the owner's /inspect command lists them).
+# Leave a value empty to keep the standard emoji shown above.
+CUSTOM_EMOJI = {
+    engine.RED: "", engine.YELLOW: "", engine.EMPTY: "",
+    engine.RED + "_win": "", engine.YELLOW + "_win": "",
+}
 
 
 def rank_title(rating):
     for floor, name in TITLES:
         if rating >= floor:
             return name
-    return "مبتدئ 🌱"
+    return "Beginner 🌱"
 
 
 def button(text, callback=None, style=None, disabled=False):
@@ -56,22 +63,40 @@ def rating_of(players, uid):
     return players.get(str(uid), {}).get("rating", START_RATING)
 
 
+def disc_view(disc, winning=False):
+    fallback = WIN_DISC[disc] if winning else DISC[disc]
+    custom_id = CUSTOM_EMOJI.get(disc + ("_win" if winning else ""))
+    if custom_id:
+        return {"type": "custom_emoji", "custom_emoji_id": custom_id, "alternative_text": fallback}
+    return fallback
+
+
 def board_table(game, interactive, lobby=False):
+    """Numbered drop buttons above a shaded grid; discs fall to the lowest free space."""
     base = prefix(game)
     winning = set(game.get("win_line") or ())
-    rows = [[cell(str(col + 1), True) for col in range(engine.COLS)]]
+    keys = []
+    for col in range(engine.COLS):
+        label = COLUMN_KEYS[col]
+        if interactive:
+            action = f"lobbycol:{col}" if lobby else f"col:{col}"
+            label = {"type": "button", "button": button(label, base + action, "link")}
+        keys.append(cell(label))
+    rows = [keys]
     for row in range(engine.ROWS):
-        cells = []
-        for col in range(engine.COLS):
-            i = engine.idx(row, col)
-            disc = game["board"][i]
-            content = WIN_DISC[disc] if i in winning else DISC[disc]
-            if interactive:
-                action = f"lobbycol:{col}" if lobby else f"col:{col}"
-                content = {"type": "button", "button": button(content, base + action, "link")}
-            cells.append(cell(content))
-        rows.append(cells)
+        rows.append([cell(disc_view(game["board"][engine.idx(row, col)], engine.idx(row, col) in winning), True)
+                     for col in range(engine.COLS)])
     return {"type": "table", "cells": rows, "is_bordered": False, "is_striped": False, "is_compact": True}
+
+
+def move_details(game):
+    history = game["history"]
+    lines = []
+    for start in range(0, len(history), 2):
+        pair = [f"{DISC[disc]} {col + 1}" for disc, col in zip((engine.RED, engine.YELLOW), history[start:start + 2])]
+        lines.append(f"{start // 2 + 1}. " + " · ".join(pair))
+    return {"type": "details", "summary": f"Moves ({len(history)})",
+            "blocks": [paragraph("\n".join(lines))]}
 
 
 def render(game, players):
@@ -84,48 +109,57 @@ def render(game, players):
 
 def lobby_card(game):
     return {"blocks": [
-        paragraph(bold("🔴🟡 أربعة في صف")),
+        paragraph(bold("🔴🟡 Connect Four")),
         board_table(game, interactive=True, lobby=True),
-        quote("اضغط على أي عمود عشان تلعب ضد الكمبيوتر. اللعبة ليك لوحدك، ومحدش هنا هيشوف حركاتك."),
-        button_row(button("▶️ ابدأ اللعب", prefix(game) + "play", "primary")),
+        quote("Tap a number to play the computer. The game is yours alone – "
+              "everyone else here sees this board, not your moves."),
+        button_row(button("▶️ Play Game", prefix(game) + "play", "primary")),
     ]}
 
 
 def cpu_card(game):
     base = prefix(game)
     playing = game["phase"] == "play"
-    moves = len(game["history"])
+    history = game["history"]
     level = game.get("level", "normal")
     blocks = [
-        paragraph(bold(f"🔴 {game['names'][engine.RED]}  ضد  🟡 {COMPUTER_NAME}"),
-                  f"\nالمستوى: {LEVEL_NAMES[level]} · {moves} حركة"),
+        paragraph(bold(f"🔴 {game['names'][engine.RED]}  vs  🟡 {COMPUTER_NAME}"),
+                  f"\nLevel: {LEVEL_NAMES[level]}"),
         board_table(game, interactive=playing),
     ]
     if not playing:
         blocks.append(quote(cpu_result(game)))
-        blocks.append(button_row(button("🔁 العب تاني", base + "rematch", "success")))
+        if history:
+            blocks.append(move_details(game))
+        blocks.append(button_row(button("🔁 Play Again", base + "rematch", "success")))
         return {"blocks": blocks}
-    status = "دورك: اضغط على العمود اللي عايز تنزّل فيه." if game["turn"] == engine.RED else "الكمبيوتر بيفكر..."
-    if not moves:
-        status += "\nكمّل 4 من لونك في صف، أفقي أو رأسي أو مايل، عشان تكسب."
+    if game["turn"] != engine.RED:
+        status = "Computer is thinking…"
+    elif not history:
+        status = ("Tap a number to drop your disc into that column – it falls to the lowest free space.\n"
+                  "Connect 4 in a row (across, down or diagonally) to win.")
+    else:
+        status = f"Computer dropped in column {history[-1] + 1}. Your turn."
     blocks.append(quote(status))
-    if not moves:
+    if history:
+        blocks.append(move_details(game))
+    else:
         blocks.append(button_row(*(button(LEVEL_NAMES[name], base + "level:" + name,
                                           "primary" if name == level else None)
                                    for name in engine.LEVELS)))
-    blocks.append(button_row(button("↩️ تراجع", base + "undo", disabled=moves < 2),
-                             button("🏳️ استسلام", base + "resign", disabled=not moves)))
+    blocks.append(button_row(button("↩️ Undo", base + "undo", disabled=len(history) < 2),
+                             button("🏳️ Resign", base + "resign", disabled=not history)))
     return {"blocks": blocks}
 
 
 def cpu_result(game):
     if game["winner"] == engine.RED:
-        return "🎉 مبروك، كسبت!"
+        return "🎉 You win!"
     if game["winner"] == engine.YELLOW:
         if game.get("reason") == "resign":
-            return "🏳️ استسلمت، والكمبيوتر كسب."
-        return "🤖 الكمبيوتر كسب المرة دي. جرّب تاني!"
-    return "🤝 تعادل، الرقعة اتملت."
+            return "🏳️ You resigned. The computer wins."
+        return "🤖 The computer wins this time. Try again!"
+    return "🤝 Draw – the board is full."
 
 
 def pvp_card(game, players):
@@ -133,38 +167,45 @@ def pvp_card(game, players):
     names, seats = game["names"], game["players"]
     red = f"🔴 {names[engine.RED]} ({rating_of(players, seats[engine.RED])})"
     if game["phase"] == "waiting":
-        line = (f"\n{red} بيتحدى {game['invited_name']}" if game.get("invited")
-                else f"\n{red} مستني منافس")
+        line = (f"\n{red} challenges {game['invited_name']}" if game.get("invited")
+                else f"\n{red} is waiting for an opponent")
         return {"blocks": [
-            paragraph(bold("⚔️ تحدي أربعة في صف"), line),
+            paragraph(bold("⚔️ Connect Four Challenge"), line),
             board_table(game, interactive=False),
-            quote(f"كل لاعب ليه {TURN_SECONDS} ثانية للحركة. اللي يكمّل 4 في صف يكسب ويزوّد نقاطه."),
-            button_row(button("✅ اقبل التحدي", base + "join", "primary")),
-            button_row(button("🤖 العب ضد الكمبيوتر", base + "cpu"), button("❌ إلغاء", base + "cancel")),
+            quote(f"{TURN_SECONDS} seconds per move. Connect 4 in a row to win and climb the leaderboard."),
+            button_row(button("✅ Accept Challenge", base + "join", "primary")),
+            button_row(button("🤖 Play the Computer", base + "cpu"), button("❌ Cancel", base + "cancel")),
         ]}
     if game.get("reason") == "cancelled":
-        return {"blocks": [paragraph(bold("❌ التحدي اتلغى"), f"\n{names[engine.RED]} لغى التحدي.")]}
+        return {"blocks": [paragraph(bold("❌ Challenge cancelled"),
+                                     f"\n{names[engine.RED]} cancelled the challenge.")]}
     yellow = f"🟡 {names[engine.YELLOW]} ({rating_of(players, seats[engine.YELLOW])})"
     playing = game["phase"] == "play"
-    blocks = [paragraph(bold(f"{red}  ضد  {yellow}")), board_table(game, interactive=playing)]
+    blocks = [paragraph(bold(f"{red}  vs  {yellow}")), board_table(game, interactive=playing)]
     if playing:
-        turn = game["turn"]
-        blocks.append(quote(f"الدور على {DISC[turn]} {names[turn]}\n"
-                            f"⏱ {TURN_SECONDS} ثانية للحركة، واللي وقته يخلص يخسر."))
-        blocks.append(button_row(button("🏳️ استسلام", base + "resign")))
+        turn, history = game["turn"], game["history"]
+        status = f"{DISC[turn]} {names[turn]}'s turn · ⏱ {TURN_SECONDS}s per move"
+        status += (f"\nLast move: column {history[-1] + 1}" if history
+                   else "\nTap a number to drop a disc into that column.")
+        blocks.append(quote(status))
+        if history:
+            blocks.append(move_details(game))
+        blocks.append(button_row(button("🏳️ Resign", base + "resign")))
     else:
         blocks.append(quote(pvp_result(game)))
-        blocks.append(button_row(button("🔁 تحدي تاني", base + "rematch", "success")))
+        if game["history"]:
+            blocks.append(move_details(game))
+        blocks.append(button_row(button("🔁 Rematch", base + "rematch", "success")))
     return {"blocks": blocks}
 
 
 def pvp_result(game):
     names, change, winner = game["names"], game.get("rating_change", 0), game["winner"]
     if winner is None:
-        return (f"🤝 تعادل، الرقعة اتملت.\n"
+        return (f"🤝 Draw – the board is full.\n"
                 f"{names[engine.RED]}: {change:+d} · {names[engine.YELLOW]}: {-change:+d}")
     loser = engine.other(winner)
     gained = change if winner == engine.RED else -change
-    how = {"timeout": f"\n⏱ وقت {names[loser]} خلص.",
-           "resign": f"\n🏳️ {names[loser]} استسلم."}.get(game.get("reason"), "")
-    return f"🏆 {names[winner]} كسب! (+{gained} نقطة)\n{names[loser]}: -{gained} نقطة{how}"
+    how = {"timeout": f"\n⏱ {names[loser]} ran out of time.",
+           "resign": f"\n🏳️ {names[loser]} resigned."}.get(game.get("reason"), "")
+    return f"🏆 {names[winner]} wins! (+{gained})\n{names[loser]}: -{gained}{how}"

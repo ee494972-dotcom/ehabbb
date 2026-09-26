@@ -87,7 +87,7 @@ class BotTest(unittest.TestCase):
         self.press(MONA, game, "col:3")
         self.press(SARA, game, "col:3")
         self.assertEqual(game["history"], [])
-        self.assertIn("مش دورك، استنى منافسك", self.tg.alerts())
+        self.assertIn("Not your turn – wait for your opponent", self.tg.alerts())
 
     def test_reply_challenge_is_reserved_for_the_invited_player(self):
         self.say(ALI, "/play@Connect4Bot", GROUP, reply_to=MONA)
@@ -152,6 +152,20 @@ class BotTest(unittest.TestCase):
                 elif step == "play":
                     self.press(ALI, game, "resign")
 
+
+    def test_only_the_numbered_row_is_pressable(self):
+        self.say(ALI, "/start")
+        table = bot.render(self.latest_game())["blocks"][1]
+        callbacks = [c["text"]["button"].get("callback_data") for row in table["cells"] for c in row
+                     if isinstance(c["text"], dict) and c["text"].get("type") == "button"]
+        self.assertEqual(len(callbacks), engine.COLS)
+        self.assertTrue(all(":col:" in data for data in callbacks))
+
+    def test_owner_can_inspect_custom_emoji(self):
+        reply = {"text": "x", "entities": [{"type": "custom_emoji", "custom_emoji_id": "555"}]}
+        bot.handle_message({"from": {"id": bot.OWNER_ID}, "chat": {"id": 5, "type": "private"},
+                            "text": "/inspect", "reply_to_message": reply})
+        self.assertIn("555", self.tg.calls[-1][1]["text"])
 
 if __name__ == "__main__":
     unittest.main()
