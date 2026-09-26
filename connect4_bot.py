@@ -171,14 +171,23 @@ def render(game, premium=False):
     return cards.render(game, state["players"], premium)
 
 
-def is_private(chat_id):
-    # Custom emoji show in regular messages only in private chats (positive ids);
-    # in groups and channels they show only in ephemeral views.
-    return int(chat_id) > 0
+def send_card(chat_id, game):
+    """Send the card with custom emoji, or with standard emoji if Telegram refuses them."""
+    sent = tg.rich_send(chat_id, render(game, True))
+    if not sent and cards.has_custom_emoji():
+        sent = tg.rich_send(chat_id, render(game))
+    return sent
+
+
+def edit_card(chat_id, message_id, game):
+    if tg.rich_edit(chat_id, message_id, render(game, True)) or not cards.has_custom_emoji():
+        return
+    if "not modified" not in tg.last_error:
+        tg.rich_edit(chat_id, message_id, render(game))
 
 
 def post(game):
-    sent = tg.rich_send(game["chat"], render(game, is_private(game["chat"])))
+    sent = send_card(game["chat"], game)
     game["message_id"] = ((sent or {}).get("result") or {}).get("message_id")
     save()
 
@@ -187,9 +196,9 @@ def refresh(game, chat_id=None, message_id=None, user_id=None):
     """Edit the card everywhere it is shown."""
     game["updated"] = time.time()
     if game["mode"] == "pvp":
-        # One public card for the group plus each viewer's ephemeral premium board.
+        # One public card for the group plus each player's ephemeral premium board.
         if game.get("message_id"):
-            tg.rich_edit(game["chat"], game["message_id"], render(game))
+            edit_card(game["chat"], game["message_id"], game)
         for viewer, ephemeral_id in game.get("views", {}).items():
             tg.rich_ephemeral_edit(game["chat"], int(viewer), ephemeral_id, render(game, True))
         return
@@ -203,7 +212,7 @@ def refresh(game, chat_id=None, message_id=None, user_id=None):
         target, message_id = game["chat"], game["message_id"]
     else:
         return
-    tg.rich_edit(target, message_id, render(game, is_private(target)))
+    edit_card(target, message_id, game)
 
 
 def start_challenge(chat_id, creator, invited=None):

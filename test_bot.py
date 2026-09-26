@@ -186,16 +186,35 @@ class BotTest(unittest.TestCase):
         self.assertIn("🔴  1", reply)
         self.assertIn("🟡  2", reply)
 
-    def test_premium_emoji_only_where_telegram_shows_them(self):
+    def test_public_cards_use_premium_emoji(self):
         with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
             self.say(ALI, "/start")
             self.assertIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
             self.say(ALI, "/play", GROUP)
+            self.assertIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
             game = self.latest_game()
             self.press(MONA, game, "join")
-            public = json.dumps(bot.render(game))
-            self.assertNotIn('"900"', public)
-            self.assertNotIn(":view", public)
+            edits = [p for m, p in self.tg.calls if m == "editMessageText"]
+            self.assertIn('"900"', json.dumps(edits[-1]["rich_message"]))
+
+    def test_refused_premium_edit_falls_back_to_standard_emoji(self):
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            if method == "editMessageText" and '"900"' in json.dumps(params["rich_message"]):
+                real.calls.append((method, params))
+                bot.tg.last_error = "Bad Request: custom emoji not allowed"
+                return None
+            return real(method, params, timeout)
+
+        with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
+            self.say(ALI, "/start")
+            game = self.latest_game()
+            with mock.patch.object(tg, "api", telegram):
+                self.press(ALI, game, "col:3")
+        edits = [p for m, p in self.tg.calls if m == "editMessageText"]
+        self.assertIn('"900"', json.dumps(edits[-2]["rich_message"]))
+        self.assertNotIn('"900"', json.dumps(edits[-1]["rich_message"]))
 
     def non_admin_telegram(self):
         """Ephemeral sends without the receiver's own button press are refused, as for a non-admin bot."""

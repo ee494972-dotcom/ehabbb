@@ -5,6 +5,7 @@ import urllib.parse
 import urllib.request
 
 _token = ""
+last_error = ""
 
 
 def configure(token):
@@ -13,6 +14,8 @@ def configure(token):
 
 
 def api(method, params=None, timeout=45):
+    global last_error
+    last_error = ""
     payload = {key: json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
                for key, value in (params or {}).items()}
     request = urllib.request.Request(f"https://api.telegram.org/bot{_token}/{method}",
@@ -26,6 +29,7 @@ def api(method, params=None, timeout=45):
             detail = exc.read().decode("utf-8", "replace")
         except Exception:
             detail = ""
+        last_error = detail
         print(f"api {method} failed: HTTP {exc.code}: {detail}", flush=True)
         return None
     except Exception as exc:

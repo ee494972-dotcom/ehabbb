@@ -111,18 +111,18 @@ def move_details(game):
 
 
 def render(game, players, premium=False):
-    """premium: the card is shown where custom emoji display (private chat or ephemeral view)."""
+    """premium: draw the board with the configured custom emoji."""
     if game["mode"] == "lobby":
-        return lobby_card(game)
+        return lobby_card(game, premium)
     if game["mode"] == "cpu":
         return cpu_card(game, premium)
     return pvp_card(game, players, premium)
 
 
-def lobby_card(game):
+def lobby_card(game, premium=False):
     return {"blocks": [
         paragraph(bold("🔴🟡 Connect Four")),
-        board_table(game, interactive=True, lobby=True),
+        board_table(game, interactive=True, lobby=True, premium=premium),
         quote("Tap any column to play the computer. The game is yours alone – "
               "everyone else here sees this board, not your moves."),
         button_row(button("▶️ Play Game", prefix(game) + "play", "primary")),
@@ -183,7 +183,7 @@ def pvp_card(game, players, premium=False):
                 else f"\n{red} is waiting for an opponent")
         return {"blocks": [
             paragraph(bold("⚔️ Connect Four Challenge"), line),
-            board_table(game, interactive=False),
+            board_table(game, interactive=False, premium=premium),
             quote(f"{TURN_SECONDS} seconds per move. Connect 4 in a row to win and climb the leaderboard."),
             button_row(button("✅ Accept Challenge", base + "join", "primary")),
             button_row(button("🤖 Play the Computer", base + "cpu"), button("❌ Cancel", base + "cancel")),
