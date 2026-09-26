@@ -4,8 +4,8 @@ import engine
 TURN_SECONDS = 60
 START_RATING = 1000
 COMPUTER_NAME = "Computer"
-DISC = {engine.RED: "🔴", engine.YELLOW: "🟡", engine.EMPTY: "⚫"}
-WIN_DISC = {engine.RED: "🟥", engine.YELLOW: "🟨"}
+DISC = {engine.RED: "🔴", engine.YELLOW: "🔵", engine.EMPTY: "⚫"}
+WIN_DISC = {engine.RED: "🟥", engine.YELLOW: "🟦"}
 LEVEL_NAMES = {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 TITLES = ((1500, "Legend 👑"), (1300, "Expert 💎"), (1150, "Pro 🔥"), (1000, "Amateur ⭐"))
 # Optional Telegram custom emoji ids (the owner's "فحص" command lists them).
@@ -121,7 +121,7 @@ def render(game, players, premium=False):
 
 def lobby_card(game, premium=False):
     return {"blocks": [
-        paragraph(bold("🔴🟡 Connect Four")),
+        paragraph(bold("🔴🔵 Connect Four")),
         board_table(game, interactive=True, lobby=True, premium=premium),
         quote("Tap any column to play the computer. The game is yours alone – "
               "everyone else here sees this board, not your moves."),
@@ -135,7 +135,7 @@ def cpu_card(game, premium=False):
     history = game["history"]
     level = game.get("level", "normal")
     blocks = [
-        paragraph(bold(f"🔴 {game['names'][engine.RED]}  vs  🟡 {COMPUTER_NAME}"),
+        paragraph(bold(f"🔴 {game['names'][engine.RED]}  vs  🔵 {COMPUTER_NAME}"),
                   f"\nLevel: {LEVEL_NAMES[level]}"),
         board_table(game, interactive=playing, premium=premium),
     ]
@@ -191,7 +191,7 @@ def pvp_card(game, players, premium=False):
     if game.get("reason") == "cancelled":
         return {"blocks": [paragraph(bold("❌ Challenge cancelled"),
                                      f"\n{names[engine.RED]} cancelled the challenge.")]}
-    yellow = f"🟡 {names[engine.YELLOW]} ({rating_of(players, seats[engine.YELLOW])})"
+    yellow = f"🔵 {names[engine.YELLOW]} ({rating_of(players, seats[engine.YELLOW])})"
     playing = game["phase"] == "play"
     blocks = [paragraph(bold(f"{red}  vs  {yellow}")),
               board_table(game, interactive=playing, premium=premium)]

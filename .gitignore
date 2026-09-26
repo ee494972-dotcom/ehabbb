@@ -2,3 +2,5 @@ connect4_state.json
 connect4_state.tmp
 __pycache__/
 emoji/themes/
+emoji/woodboard/
+emoji/woodboard_preview.png

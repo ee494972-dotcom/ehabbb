@@ -31,7 +31,7 @@ COMMANDS = [
     {"command": "help", "description": "How to play", "is_ephemeral": True},
 ]
 HELP = (
-    "🔴🟡 Connect Four\n\n"
+    "🔴🔵 Connect Four\n\n"
     "Take turns dropping a disc into a column – it falls to the lowest free space. "
     "The first to connect 4 of their colour in a row (across, down or diagonally) wins.\n\n"
     "• /play in private: play the computer\n"
@@ -381,8 +381,8 @@ def custom_emoji_found(msg):
 SET_PACK_WORDS = ("/setpack", "تعيين الايموجي", "تعيين الإيموجي")
 RESET_PACK_WORDS = ("/resetpack", "حذف الايموجي", "حذف الإيموجي")
 # Which card slot each emoji of the pack fills, keyed by the emoji it was uploaded with.
-PACK_SLOTS = {"🔴": engine.RED, "🟡": engine.YELLOW, "⚫": engine.EMPTY,
-              "🟥": engine.RED + "_win", "🟨": engine.YELLOW + "_win"}
+PACK_SLOTS = {"🔴": engine.RED, "🔵": engine.YELLOW, "🟡": engine.YELLOW, "⚫": engine.EMPTY,
+              "🟥": engine.RED + "_win", "🟦": engine.YELLOW + "_win", "🟨": engine.YELLOW + "_win"}
 # Slots in the alphabetical file order of emoji/pack: empty, red, red_win, yellow, yellow_win.
 PACK_ORDER = (engine.EMPTY, engine.RED, engine.RED + "_win", engine.YELLOW, engine.YELLOW + "_win")
 
@@ -419,7 +419,7 @@ def set_pack(chat_id, argument):
         # The emoji tags don't cover every slot, so trust the upload order of emoji/pack instead.
         chosen = dict(zip(PACK_ORDER, ids))
     if not chosen:
-        tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🟡 ⚫ 🟥 🟨")
+        tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🔵 ⚫ 🟥 🟦")
         return
     state["custom_emoji"] = chosen
     save()
