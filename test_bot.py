@@ -203,7 +203,7 @@ class BotTest(unittest.TestCase):
         def telegram(method, params=None, timeout=45):
             if method == "editMessageText" and '"900"' in json.dumps(params["rich_message"]):
                 real.calls.append((method, params))
-                bot.tg.last_error = "Bad Request: custom emoji not allowed"
+                tg.last_error = "Bad Request: custom emoji not allowed"
                 return None
             return real(method, params, timeout)
 
