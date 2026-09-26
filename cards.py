@@ -85,6 +85,8 @@ def board_table(game, interactive, lobby=False, premium=False):
     base = prefix(game)
     winning = set(game.get("win_line") or ())
     action = "lobbycol" if lobby else "col"
+    # Custom emoji tiles carry their own background, so the table shading only frames standard emoji.
+    shaded = not (premium and has_custom_emoji())
     rows = []
     for row in range(engine.ROWS):
         cells = []
@@ -93,7 +95,7 @@ def board_table(game, interactive, lobby=False, premium=False):
             content = disc_view(game["board"][i], i in winning, premium)
             if interactive:
                 content = {"type": "button", "button": button(content, f"{base}{action}:{col}", "link")}
-            cells.append(cell(content, True))
+            cells.append(cell(content, shaded))
         rows.append(cells)
     return {"type": "table", "cells": rows, "is_bordered": False, "is_striped": False, "is_compact": True}
 
