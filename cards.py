@@ -6,7 +6,6 @@ START_RATING = 1000
 COMPUTER_NAME = "Computer"
 DISC = {engine.RED: "🔴", engine.YELLOW: "🟡", engine.EMPTY: "⚫"}
 WIN_DISC = {engine.RED: "🟥", engine.YELLOW: "🟨"}
-COLUMN_KEYS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣")
 LEVEL_NAMES = {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 TITLES = ((1500, "Legend 👑"), (1300, "Expert 💎"), (1150, "Pro 🔥"), (1000, "Amateur ⭐"))
 # Optional Telegram custom emoji ids (the owner's "فحص" command lists them).
@@ -15,7 +14,6 @@ TITLES = ((1500, "Legend 👑"), (1300, "Expert 💎"), (1150, "Pro 🔥"), (100
 CUSTOM_EMOJI = {
     engine.RED: "", engine.YELLOW: "", engine.EMPTY: "",
     engine.RED + "_win": "", engine.YELLOW + "_win": "",
-    "col1": "", "col2": "", "col3": "", "col4": "", "col5": "", "col6": "", "col7": "",
 }
 
 
@@ -83,21 +81,20 @@ def disc_view(disc, winning=False, premium=False):
 
 
 def board_table(game, interactive, lobby=False, premium=False):
-    """Numbered drop buttons above a shaded grid; discs fall to the lowest free space."""
+    """Shaded grid; tapping any cell drops a disc into that cell's column."""
     base = prefix(game)
     winning = set(game.get("win_line") or ())
-    keys = []
-    for col in range(engine.COLS):
-        label = emoji(f"col{col + 1}", COLUMN_KEYS[col], premium)
-        if interactive:
-            action = f"lobbycol:{col}" if lobby else f"col:{col}"
-            label = {"type": "button", "button": button(label, base + action, "link")}
-        keys.append(cell(label))
-    rows = [keys]
+    action = "lobbycol" if lobby else "col"
+    rows = []
     for row in range(engine.ROWS):
-        rows.append([cell(disc_view(game["board"][engine.idx(row, col)], engine.idx(row, col) in winning,
-                                    premium), True)
-                     for col in range(engine.COLS)])
+        cells = []
+        for col in range(engine.COLS):
+            i = engine.idx(row, col)
+            content = disc_view(game["board"][i], i in winning, premium)
+            if interactive:
+                content = {"type": "button", "button": button(content, f"{base}{action}:{col}", "link")}
+            cells.append(cell(content, True))
+        rows.append(cells)
     return {"type": "table", "cells": rows, "is_bordered": False, "is_striped": False, "is_compact": True}
 
 
@@ -124,7 +121,7 @@ def lobby_card(game):
     return {"blocks": [
         paragraph(bold("🔴🟡 Connect Four")),
         board_table(game, interactive=True, lobby=True),
-        quote("Tap a number to play the computer. The game is yours alone – "
+        quote("Tap any column to play the computer. The game is yours alone – "
               "everyone else here sees this board, not your moves."),
         button_row(button("▶️ Play Game", prefix(game) + "play", "primary")),
     ]}
@@ -149,7 +146,7 @@ def cpu_card(game, premium=False):
     if game["turn"] != engine.RED:
         status = "Computer is thinking…"
     elif not history:
-        status = ("Tap a number to drop your disc into that column – it falls to the lowest free space.\n"
+        status = ("Tap any spot in a column to drop your disc there – it falls to the lowest free space.\n"
                   "Connect 4 in a row (across, down or diagonally) to win.")
     else:
         status = f"Computer dropped in column {history[-1] + 1}. Your turn."
@@ -200,7 +197,7 @@ def pvp_card(game, players, premium=False):
         turn, history = game["turn"], game["history"]
         status = f"{DISC[turn]} {names[turn]}'s turn · ⏱ {TURN_SECONDS}s per move"
         status += (f"\nLast move: column {history[-1] + 1}" if history
-                   else "\nTap a number to drop a disc into that column.")
+                   else "\nTap any spot in a column to drop your disc there.")
         blocks.append(quote(status))
         if history:
             blocks.append(move_details(game))

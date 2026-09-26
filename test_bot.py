@@ -154,13 +154,16 @@ class BotTest(unittest.TestCase):
                     self.press(ALI, game, "resign")
 
 
-    def test_only_the_numbered_row_is_pressable(self):
+    def test_every_cell_drops_into_its_column(self):
         self.say(ALI, "/start")
         table = bot.render(self.latest_game())["blocks"][1]
-        callbacks = [c["text"]["button"].get("callback_data") for row in table["cells"] for c in row
-                     if isinstance(c["text"], dict) and c["text"].get("type") == "button"]
-        self.assertEqual(len(callbacks), engine.COLS)
-        self.assertTrue(all(":col:" in data for data in callbacks))
+        self.assertEqual(len(table["cells"]), engine.ROWS)
+        for row in table["cells"]:
+            columns = [c["text"]["button"]["callback_data"].rsplit(":", 1)[1] for c in row]
+            self.assertEqual(columns, [str(col) for col in range(engine.COLS)])
+        game = self.latest_game()
+        self.press(ALI, game, "col:2")
+        self.assertEqual(game["board"][engine.idx(engine.ROWS - 1, 2)], engine.RED)
 
     def owner_says(self, text, **extra):
         bot.handle_message({"from": {"id": bot.OWNER_ID}, "chat": {"id": bot.OWNER_ID, "type": "private"},
@@ -206,7 +209,7 @@ class BotTest(unittest.TestCase):
 
     def test_owner_sets_the_discs_from_a_pack_link(self):
         stickers = [{"emoji": "🔴", "custom_emoji_id": "11"}, {"emoji": "⚫️", "custom_emoji_id": "12"},
-                    {"emoji": "1️⃣", "custom_emoji_id": "13"}, {"emoji": "😀", "custom_emoji_id": "14"}]
+                    {"emoji": "🟨", "custom_emoji_id": "13"}, {"emoji": "😀", "custom_emoji_id": "14"}]
         real = self.tg
 
         def telegram(method, params=None, timeout=45):
@@ -220,7 +223,7 @@ class BotTest(unittest.TestCase):
             self.assertIn("3", reply)
             self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.RED], "11")
             self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.EMPTY], "12")
-            self.assertEqual(bot.cards.CUSTOM_EMOJI["col1"], "13")
+            self.assertEqual(bot.cards.CUSTOM_EMOJI[engine.YELLOW + "_win"], "13")
             self.assertEqual(bot.state["custom_emoji"][engine.RED], "11")
             self.assertIn("🔴  11", self.owner_says("فحص t.me/addemoji/C4Pack"))
             self.owner_says("حذف الايموجي")

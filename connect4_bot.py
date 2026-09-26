@@ -351,8 +351,7 @@ SET_PACK_WORDS = ("/setpack", "تعيين الايموجي", "تعيين الإ�
 RESET_PACK_WORDS = ("/resetpack", "حذف الايموجي", "حذف الإيموجي")
 # Which card slot each emoji of the pack fills, keyed by the emoji it was uploaded with.
 PACK_SLOTS = {"🔴": engine.RED, "🟡": engine.YELLOW, "⚫": engine.EMPTY,
-              "🟥": engine.RED + "_win", "🟨": engine.YELLOW + "_win",
-              **{f"{n}⃣": f"col{n}" for n in range(1, 8)}}
+              "🟥": engine.RED + "_win", "🟨": engine.YELLOW + "_win"}
 
 
 def pack_name(text):
@@ -383,7 +382,7 @@ def set_pack(chat_id, argument):
         if slot and sticker.get("custom_emoji_id") and slot not in chosen:
             chosen[slot] = sticker["custom_emoji_id"]
     if not chosen:
-        tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🟡 ⚫ 🟥 🟨 أو 1️⃣ لـ 7️⃣")
+        tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🟡 ⚫ 🟥 🟨")
         return
     state["custom_emoji"] = chosen
     save()
