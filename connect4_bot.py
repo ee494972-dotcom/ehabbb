@@ -375,6 +375,8 @@ RESET_PACK_WORDS = ("/resetpack", "حذف الايموجي", "حذف الإيم�
 # Which card slot each emoji of the pack fills, keyed by the emoji it was uploaded with.
 PACK_SLOTS = {"🔴": engine.RED, "🟡": engine.YELLOW, "⚫": engine.EMPTY,
               "🟥": engine.RED + "_win", "🟨": engine.YELLOW + "_win"}
+# Slots in the alphabetical file order of emoji/pack: empty, red, red_win, yellow, yellow_win.
+PACK_ORDER = (engine.EMPTY, engine.RED, engine.RED + "_win", engine.YELLOW, engine.YELLOW + "_win")
 
 
 def pack_name(text):
@@ -404,6 +406,10 @@ def set_pack(chat_id, argument):
         slot = PACK_SLOTS.get((sticker.get("emoji") or "").replace("️", ""))
         if slot and sticker.get("custom_emoji_id") and slot not in chosen:
             chosen[slot] = sticker["custom_emoji_id"]
+    ids = [s.get("custom_emoji_id") for s in stickers]
+    if len(chosen) < len(PACK_ORDER) and len(ids) == len(PACK_ORDER) and all(ids):
+        # The emoji tags don't cover every slot, so trust the upload order of emoji/pack instead.
+        chosen = dict(zip(PACK_ORDER, ids))
     if not chosen:
         tg.text_send(chat_id, "• مفيش ولا إيموجي في الباكدج دي متربط بـ 🔴 🟡 ⚫ 🟥 🟨")
         return

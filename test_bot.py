@@ -265,5 +265,22 @@ class BotTest(unittest.TestCase):
         self.assertEqual(params["ephemeral_message_parameters"], {"receiver_user_id": 11})
         self.assertEqual(params["reply_parameters"]["ephemeral_message_id"], 80)
 
+    def test_pack_with_wrong_tags_is_read_in_upload_order(self):
+        stickers = [{"emoji": "🔴", "custom_emoji_id": "e"}, {"emoji": "🔴", "custom_emoji_id": "r"},
+                    {"emoji": "🟥", "custom_emoji_id": "rw"}, {"emoji": "🟡", "custom_emoji_id": "y"},
+                    {"emoji": "🟨", "custom_emoji_id": "yw"}]
+        real = self.tg
+
+        def telegram(method, params=None, timeout=45):
+            if method == "getStickerSet":
+                return {"ok": True, "result": {"stickers": stickers}}
+            return real(method, params, timeout)
+
+        with mock.patch.object(tg, "api", telegram), mock.patch.dict(bot.cards.CUSTOM_EMOJI):
+            self.owner_says("تعيين الايموجي t.me/addemoji/PlayConnectX")
+            self.assertEqual(bot.state["custom_emoji"], {engine.EMPTY: "e", engine.RED: "r",
+                                                          engine.RED + "_win": "rw", engine.YELLOW: "y",
+                                                          engine.YELLOW + "_win": "yw"})
+
 if __name__ == "__main__":
     unittest.main()
