@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -161,11 +162,47 @@ class BotTest(unittest.TestCase):
         self.assertEqual(len(callbacks), engine.COLS)
         self.assertTrue(all(":col:" in data for data in callbacks))
 
-    def test_owner_can_inspect_custom_emoji(self):
-        reply = {"text": "x", "entities": [{"type": "custom_emoji", "custom_emoji_id": "555"}]}
-        bot.handle_message({"from": {"id": bot.OWNER_ID}, "chat": {"id": 5, "type": "private"},
-                            "text": "/inspect", "reply_to_message": reply})
-        self.assertIn("555", self.tg.calls[-1][1]["text"])
+    def owner_says(self, text, **extra):
+        bot.handle_message({"from": {"id": bot.OWNER_ID}, "chat": {"id": bot.OWNER_ID, "type": "private"},
+                            "text": text, **extra})
+        return self.tg.calls[-1][1]["text"]
+
+    def test_owner_can_inspect_a_replied_message(self):
+        reply = {"text": "🔴", "entities": [{"type": "custom_emoji", "offset": 0, "length": 2,
+                                             "custom_emoji_id": "555"}]}
+        self.assertIn("🔴  555", self.owner_says("/inspect", reply_to_message=reply))
+
+    def test_owner_can_inspect_emoji_sent_with_the_word(self):
+        entities = [{"type": "custom_emoji", "offset": 4, "length": 2, "custom_emoji_id": "777"}]
+        self.assertIn("🔴  777", self.owner_says("فحص 🔴", entities=entities))
+
+    def test_owner_can_inspect_emoji_sent_alone(self):
+        entities = [{"type": "custom_emoji", "offset": 0, "length": 2, "custom_emoji_id": "1"},
+                    {"type": "custom_emoji", "offset": 2, "length": 2, "custom_emoji_id": "2"}]
+        reply = self.owner_says("🔴🟡", entities=entities)
+        self.assertIn("🔴  1", reply)
+        self.assertIn("🟡  2", reply)
+
+    def test_premium_emoji_only_where_telegram_shows_them(self):
+        with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
+            self.say(ALI, "/start")
+            self.assertIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
+            self.say(ALI, "/play", GROUP)
+            game = self.latest_game()
+            self.press(MONA, game, "join")
+            public = json.dumps(bot.render(game))
+            self.assertNotIn('"900"', public)
+            self.assertIn(":view", public)
+            self.press(SARA, game, "view")
+            self.assertIn("33", game["views"])
+            self.press(ALI, game, "col:3")
+            edits = [p for m, p in self.tg.calls if m == "editEphemeralMessageText"]
+            self.assertEqual(edits[-1]["receiver_user_id"], 33)
+            self.assertIn('"900"', json.dumps(edits[-1]["rich_message"]))
+
+    def test_group_cpu_posts_a_shared_board(self):
+        self.say(ALI, "/cpu", GROUP)
+        self.assertEqual(self.latest_game()["mode"], "lobby")
 
 if __name__ == "__main__":
     unittest.main()

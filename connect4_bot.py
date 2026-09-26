@@ -16,6 +16,7 @@ TOKEN = os.environ.get("CONNECT4_TOKEN", "")
 OWNER_ID = int(os.environ.get("CONNECT4_OWNER_ID", "8555191642"))
 ELO_K = 32
 DAY = 24 * 60 * 60
+MAX_VIEWERS = 12
 PLAY_WORDS = {"connect4", "connect four", "Connect4", "Connect Four",
               "اربعة", "أربعة", "اربعه", "أربعه", "اربعة في صف", "أربعة في صف"}
 GROUP_TYPES = ("group", "supergroup")
@@ -165,26 +166,43 @@ def parse_column(value):
 
 # ------------------------------------------------------------------ messages
 
-def render(game):
-    return cards.render(game, state["players"])
+def render(game, premium=False):
+    return cards.render(game, state["players"], premium)
+
+
+def is_private(chat_id):
+    # Custom emoji show in regular messages only in private chats (positive ids);
+    # in groups and channels they show only in ephemeral views.
+    return int(chat_id) > 0
 
 
 def post(game):
-    sent = tg.rich_send(game["chat"], render(game))
+    sent = tg.rich_send(game["chat"], render(game, is_private(game["chat"])))
     game["message_id"] = ((sent or {}).get("result") or {}).get("message_id")
     save()
 
 
 def refresh(game, chat_id=None, message_id=None, user_id=None):
-    """Edit the card where it is shown: the viewer's ephemeral copy or the posted message."""
+    """Edit the card everywhere it is shown."""
     game["updated"] = time.time()
+    if game["mode"] == "pvp":
+        # One public card for the group plus each viewer's ephemeral premium board.
+        if game.get("message_id"):
+            tg.rich_edit(game["chat"], game["message_id"], render(game))
+        for viewer, ephemeral_id in game.get("views", {}).items():
+            tg.rich_ephemeral_edit(game["chat"], int(viewer), ephemeral_id, render(game, True))
+        return
     ephemeral_id = game.get("ephemeral_message_id")
     if ephemeral_id and user_id:
-        tg.rich_ephemeral_edit(chat_id or game["chat"], user_id, ephemeral_id, render(game))
-    elif message_id:
-        tg.rich_edit(chat_id or game["chat"], message_id, render(game))
+        tg.rich_ephemeral_edit(chat_id or game["chat"], user_id, ephemeral_id, render(game, True))
+        return
+    if message_id:
+        target = chat_id or game["chat"]
     elif game.get("message_id"):
-        tg.rich_edit(game["chat"], game["message_id"], render(game))
+        target, message_id = game["chat"], game["message_id"]
+    else:
+        return
+    tg.rich_edit(target, message_id, render(game, is_private(target)))
 
 
 def start_challenge(chat_id, creator, invited=None):
@@ -301,31 +319,43 @@ def admin_message(chat_id, uid, text):
     return True
 
 
-def custom_emoji_ids(value):
-    """Collect custom emoji ids from message entities and rich blocks alike."""
-    found = []
-    if isinstance(value, dict):
-        if value.get("type") == "custom_emoji" and value.get("custom_emoji_id"):
-            found.append(str(value["custom_emoji_id"]))
-        for child in value.values():
-            found += custom_emoji_ids(child)
-    elif isinstance(value, list):
-        for child in value:
-            found += custom_emoji_ids(child)
-    return list(dict.fromkeys(found))
+INSPECT_WORDS = ("/inspect", "/فحص", "فحص")
 
 
-def inspect_reply(msg, chat_id):
-    target = msg.get("reply_to_message")
-    if not target:
-        tg.text_send(chat_id, "Reply to a message that contains custom emoji, then send /inspect.")
+def custom_emoji_found(msg):
+    """Return {custom emoji id: the emoji it stands for} from text entities and rich blocks."""
+    found = {}
+
+    def walk(value):
+        if isinstance(value, dict):
+            if value.get("type") == "custom_emoji" and value.get("custom_emoji_id"):
+                found.setdefault(str(value["custom_emoji_id"]), value.get("alternative_text") or "")
+            for child in value.values():
+                walk(child)
+        elif isinstance(value, list):
+            for child in value:
+                walk(child)
+
+    walk(msg)
+    for text_key, entities_key in (("text", "entities"), ("caption", "caption_entities")):
+        raw = (msg.get(text_key) or "").encode("utf-16-le")
+        for entity in msg.get(entities_key) or []:
+            if entity.get("type") == "custom_emoji" and entity.get("custom_emoji_id"):
+                # Entity offsets count UTF-16 code units.
+                start, end = entity["offset"] * 2, (entity["offset"] + entity["length"]) * 2
+                found[str(entity["custom_emoji_id"])] = raw[start:end].decode("utf-16-le", "replace")
+    return found
+
+
+def inspect_message(msg, chat_id):
+    target = msg.get("reply_to_message") or msg
+    found = custom_emoji_found(target)
+    if not found:
+        tg.text_send(chat_id, "مفيش إيموجي بريميوم في الرسالة دي.\n"
+                              "ابعت الإيموجي نفسه، أو ابعته مع كلمة فحص، أو اعمل رد بـ فحص على رسالة فيها إيموجي.")
         return
-    ids = custom_emoji_ids(target)
-    if not ids:
-        tg.text_send(chat_id, "No custom emoji found in that message.")
-        return
-    tg.text_send(chat_id, "Custom emoji IDs:\n" + "\n".join(ids) +
-                 "\n\nPut the ones you want in CUSTOM_EMOJI to change how the discs look.")
+    lines = [f"{char or '•'}  {emoji_id}" for emoji_id, char in found.items()]
+    tg.text_send(chat_id, "Custom emoji IDs:\n\n" + "\n".join(lines))
 
 
 # ------------------------------------------------------------- group/channel
@@ -402,8 +432,11 @@ def handle_message(msg, channel_post=False):
     if admin_message(chat_id, uid, text):
         return
     command = command_of(text)
-    if command == "/inspect" and uid == OWNER_ID:
-        inspect_reply(msg, chat_id)
+    first_word = text.split(maxsplit=1)[0]
+    is_owner = user.get("id") == OWNER_ID
+    if is_owner and (command in INSPECT_WORDS or first_word in INSPECT_WORDS
+                     or (chat_type == "private" and not command and custom_emoji_found(msg))):
+        inspect_message(msg, chat_id)
     elif command == "/group":
         send_group_help(chat_id)
     elif command == "/channel":
@@ -417,7 +450,8 @@ def handle_message(msg, channel_post=False):
     elif command in ("/start", "/play", "/connect4", "/cpu") or text in PLAY_WORDS:
         if not subscribed(uid):
             gate(chat_id)
-        elif channel_post or chat_type == "channel":
+        elif channel_post or chat_type == "channel" or (chat_type in GROUP_TYPES and command == "/cpu"):
+            # A shared board: each presser plays their own game in an ephemeral view.
             start_lobby(chat_id, uid)
         elif chat_type in GROUP_TYPES and command != "/cpu":
             replied = (msg.get("reply_to_message") or {}).get("from") or {}
@@ -451,7 +485,10 @@ def handle_callback(query):
         lobby_press(qid, game, kind, value, user, view)
         return
     if message.get("ephemeral_message_id"):
-        game["ephemeral_message_id"] = message["ephemeral_message_id"]
+        if game["mode"] == "pvp":
+            game.setdefault("views", {})[str(user.get("id"))] = message["ephemeral_message_id"]
+        else:
+            game["ephemeral_message_id"] = message["ephemeral_message_id"]
     if game["mode"] == "cpu":
         cpu_press(qid, game, kind, value, user, view)
     else:
@@ -469,7 +506,7 @@ def lobby_press(qid, game, kind, value, user, view):
     if col is not None:
         play_column(user_game, col)
         computer_reply(user_game)
-    rich = render(user_game)
+    rich = render(user_game, True)
     sent = tg.rich_ephemeral_send(target_chat, user["id"], qid, rich)
     ephemeral_id = ((sent or {}).get("result") or {}).get("ephemeral_message_id")
     if ephemeral_id:
@@ -529,10 +566,33 @@ def cpu_press(qid, game, kind, value, user, view):
     refresh(game, **view)
 
 
+def open_view(qid, game, user, view):
+    """Show the pressing user a premium copy of the board that follows every move."""
+    uid = str(user.get("id"))
+    views = game.setdefault("views", {})
+    if game["phase"] != "play":
+        tg.answer(qid)
+        return
+    if uid not in views and len(views) >= MAX_VIEWERS:
+        tg.answer(qid, "Too many people are watching this game right now", True)
+        return
+    sent = tg.rich_ephemeral_send(view["chat_id"] or game["chat"], user["id"], qid, render(game, True))
+    ephemeral_id = ((sent or {}).get("result") or {}).get("ephemeral_message_id")
+    if not ephemeral_id:
+        tg.answer(qid, "Could not open the board here. Please try again.", True)
+        return
+    views[uid] = ephemeral_id
+    save()
+    tg.answer(qid)
+
+
 def pvp_press(qid, game, kind, value, user, view):
     uid = str(user.get("id"))
     seats, names = game["players"], game["names"]
     seated = uid in (seats[engine.RED], seats[engine.YELLOW])
+    if kind == "view":
+        open_view(qid, game, user, view)
+        return
     if game["phase"] == "waiting":
         if kind == "join":
             if uid == seats[engine.RED]:

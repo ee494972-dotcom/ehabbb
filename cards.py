@@ -9,11 +9,13 @@ WIN_DISC = {engine.RED: "🟥", engine.YELLOW: "🟨"}
 COLUMN_KEYS = ("1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣")
 LEVEL_NAMES = {"easy": "Easy", "normal": "Normal", "hard": "Hard"}
 TITLES = ((1500, "Legend 👑"), (1300, "Expert 💎"), (1150, "Pro 🔥"), (1000, "Amateur ⭐"))
-# Optional Telegram custom emoji ids (the owner's /inspect command lists them).
-# Leave a value empty to keep the standard emoji shown above.
+# Optional Telegram custom emoji ids (the owner's "فحص" command lists them).
+# They are used in private chats and ephemeral views only; regular group and
+# channel messages keep the standard emoji. Leave a value empty to keep it standard.
 CUSTOM_EMOJI = {
     engine.RED: "", engine.YELLOW: "", engine.EMPTY: "",
     engine.RED + "_win": "", engine.YELLOW + "_win": "",
+    "col1": "", "col2": "", "col3": "", "col4": "", "col5": "", "col6": "", "col7": "",
 }
 
 
@@ -63,28 +65,38 @@ def rating_of(players, uid):
     return players.get(str(uid), {}).get("rating", START_RATING)
 
 
-def disc_view(disc, winning=False):
-    fallback = WIN_DISC[disc] if winning else DISC[disc]
-    custom_id = CUSTOM_EMOJI.get(disc + ("_win" if winning else ""))
+def has_custom_emoji():
+    return any(CUSTOM_EMOJI.values())
+
+
+def emoji(key, fallback, premium):
+    custom_id = CUSTOM_EMOJI.get(key) if premium else None
     if custom_id:
         return {"type": "custom_emoji", "custom_emoji_id": custom_id, "alternative_text": fallback}
     return fallback
 
 
-def board_table(game, interactive, lobby=False):
+def disc_view(disc, winning=False, premium=False):
+    if winning:
+        return emoji(disc + "_win", WIN_DISC[disc], premium)
+    return emoji(disc, DISC[disc], premium)
+
+
+def board_table(game, interactive, lobby=False, premium=False):
     """Numbered drop buttons above a shaded grid; discs fall to the lowest free space."""
     base = prefix(game)
     winning = set(game.get("win_line") or ())
     keys = []
     for col in range(engine.COLS):
-        label = COLUMN_KEYS[col]
+        label = emoji(f"col{col + 1}", COLUMN_KEYS[col], premium)
         if interactive:
             action = f"lobbycol:{col}" if lobby else f"col:{col}"
             label = {"type": "button", "button": button(label, base + action, "link")}
         keys.append(cell(label))
     rows = [keys]
     for row in range(engine.ROWS):
-        rows.append([cell(disc_view(game["board"][engine.idx(row, col)], engine.idx(row, col) in winning), True)
+        rows.append([cell(disc_view(game["board"][engine.idx(row, col)], engine.idx(row, col) in winning,
+                                    premium), True)
                      for col in range(engine.COLS)])
     return {"type": "table", "cells": rows, "is_bordered": False, "is_striped": False, "is_compact": True}
 
@@ -99,12 +111,13 @@ def move_details(game):
             "blocks": [paragraph("\n".join(lines))]}
 
 
-def render(game, players):
+def render(game, players, premium=False):
+    """premium: the card is shown where custom emoji display (private chat or ephemeral view)."""
     if game["mode"] == "lobby":
         return lobby_card(game)
     if game["mode"] == "cpu":
-        return cpu_card(game)
-    return pvp_card(game, players)
+        return cpu_card(game, premium)
+    return pvp_card(game, players, premium)
 
 
 def lobby_card(game):
@@ -117,7 +130,7 @@ def lobby_card(game):
     ]}
 
 
-def cpu_card(game):
+def cpu_card(game, premium=False):
     base = prefix(game)
     playing = game["phase"] == "play"
     history = game["history"]
@@ -125,7 +138,7 @@ def cpu_card(game):
     blocks = [
         paragraph(bold(f"🔴 {game['names'][engine.RED]}  vs  🟡 {COMPUTER_NAME}"),
                   f"\nLevel: {LEVEL_NAMES[level]}"),
-        board_table(game, interactive=playing),
+        board_table(game, interactive=playing, premium=premium),
     ]
     if not playing:
         blocks.append(quote(cpu_result(game)))
@@ -162,7 +175,7 @@ def cpu_result(game):
     return "🤝 Draw – the board is full."
 
 
-def pvp_card(game, players):
+def pvp_card(game, players, premium=False):
     base = prefix(game)
     names, seats = game["names"], game["players"]
     red = f"🔴 {names[engine.RED]} ({rating_of(players, seats[engine.RED])})"
@@ -181,7 +194,8 @@ def pvp_card(game, players):
                                      f"\n{names[engine.RED]} cancelled the challenge.")]}
     yellow = f"🟡 {names[engine.YELLOW]} ({rating_of(players, seats[engine.YELLOW])})"
     playing = game["phase"] == "play"
-    blocks = [paragraph(bold(f"{red}  vs  {yellow}")), board_table(game, interactive=playing)]
+    blocks = [paragraph(bold(f"{red}  vs  {yellow}")),
+              board_table(game, interactive=playing, premium=premium)]
     if playing:
         turn, history = game["turn"], game["history"]
         status = f"{DISC[turn]} {names[turn]}'s turn · ⏱ {TURN_SECONDS}s per move"
@@ -190,6 +204,8 @@ def pvp_card(game, players):
         blocks.append(quote(status))
         if history:
             blocks.append(move_details(game))
+        if has_custom_emoji() and not premium:
+            blocks.append(button_row(button("✨ Open Board", base + "view", "primary")))
         blocks.append(button_row(button("🏳️ Resign", base + "resign")))
     else:
         blocks.append(quote(pvp_result(game)))
