@@ -168,13 +168,22 @@ def cpu_card(game, premium=False):
     return {"blocks": blocks}
 
 
+def win_shape(game):
+    """How the winning four run: across, down or diagonally ('' without a line)."""
+    line = game.get("win_line")
+    if not line:
+        return ""
+    return {1: "across", engine.COLS: "down"}.get(abs(line[1] - line[0]), "diagonally")
+
+
 def cpu_result(game):
+    shape = win_shape(game)
     if game["winner"] == engine.RED:
-        return "🎉 You win!"
+        return f"🎉 You win – four {shape}!" if shape else "🎉 You win!"
     if game["winner"] == engine.YELLOW:
         if game.get("reason") == "resign":
             return "🏳️ You resigned. The computer wins."
-        return "🤖 The computer wins this time. Try again!"
+        return f"🤖 The computer connected four {shape}. Try again!"
     return "🤝 Draw – the board is full."
 
 
@@ -225,4 +234,6 @@ def pvp_result(game):
     gained = change if winner == engine.RED else -change
     how = {"timeout": f"\n⏱ {names[loser]} ran out of time.",
            "resign": f"\n🏳️ {names[loser]} resigned."}.get(game.get("reason"), "")
-    return f"🏆 {names[winner]} wins! (+{gained})\n{names[loser]}: -{gained}{how}"
+    shape = win_shape(game)
+    headline = f"🏆 {names[winner]} wins – four {shape}!" if shape else f"🏆 {names[winner]} wins!"
+    return f"{headline} (+{gained})\n{names[loser]}: -{gained}{how}"

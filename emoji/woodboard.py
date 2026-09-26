@@ -100,12 +100,35 @@ def gold_ring(img):
     img.alpha_composite(layer(inner, (255, 236, 160), 230, 1))
 
 
+def gold_tile():
+    """Bright gold square that makes winning cells stand out at emoji size."""
+    img = Image.new("RGBA", (S, S))
+    d = ImageDraw.Draw(img)
+    for y in range(S):
+        d.line((0, y, S, y), fill=lerp((255, 226, 110), (240, 160, 10), y / S) + (255,))
+    shine = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(shine).ellipse((-120, -260, S + 120, 150), fill=255)
+    img.alpha_composite(layer(shine, (255, 255, 255), 90, 30))
+    return img
+
+
+def star_mask(cx, cy, outer, inner):
+    pts = [(cx + (outer if k % 2 == 0 else inner) * math.cos(-math.pi / 2 + k * math.pi / 5),
+            cy + (outer if k % 2 == 0 else inner) * math.sin(-math.pi / 2 + k * math.pi / 5)) for k in range(10)]
+    m = Image.new("L", (S, S), 0)
+    ImageDraw.Draw(m).polygon(pts, fill=255)
+    return m
+
+
 def tile(colors=None, state=""):
-    img = hole(wood())
+    img = hole(gold_tile() if state == "win" else wood())
     if colors:
         disc(img, colors)
         if state == "win":
             gold_ring(img)
+            star = star_mask(C, C + 6, 74, 32)
+            img.alpha_composite(layer(star, (90, 50, 0), 150, 6, 0, 6))
+            img.alpha_composite(layer(star, (255, 255, 255), 255))
     return img
 
 

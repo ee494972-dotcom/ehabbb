@@ -76,6 +76,7 @@ class BotTest(unittest.TestCase):
         for user, col in [(ALI, 0), (MONA, 1), (ALI, 0), (MONA, 1), (ALI, 0), (MONA, 1), (ALI, 0)]:
             self.press(user, game, f"col:{col}")
         self.assertEqual(game["winner"], engine.RED)
+        self.assertIn("Ali wins – four down!", bot.cards.pvp_result(game))
         ali, mona = bot.state["players"]["11"], bot.state["players"]["22"]
         self.assertEqual((ali["rating"], mona["rating"]), (1016, 984))
         self.assertEqual((ali["wins"], mona["losses"]), (1, 1))
