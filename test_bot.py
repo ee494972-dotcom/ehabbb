@@ -186,16 +186,20 @@ class BotTest(unittest.TestCase):
         self.assertIn("🔴  1", reply)
         self.assertIn("🟡  2", reply)
 
-    def test_public_cards_use_premium_emoji(self):
+    def test_premium_emoji_only_where_telegram_keeps_them(self):
         with mock.patch.dict(bot.cards.CUSTOM_EMOJI, {engine.EMPTY: "900"}):
             self.say(ALI, "/start")
             self.assertIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
-            self.say(ALI, "/play", GROUP)
+            self.say(ALI, "/cpu", GROUP)
             self.assertIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
+            self.say(ALI, "/play", GROUP)
+            self.assertNotIn('"900"', json.dumps(self.tg.calls[-1][1]["rich_message"]))
             game = self.latest_game()
             self.press(MONA, game, "join")
             edits = [p for m, p in self.tg.calls if m == "editMessageText"]
-            self.assertIn('"900"', json.dumps(edits[-1]["rich_message"]))
+            self.assertNotIn('"900"', json.dumps(edits[-1]["rich_message"]))
+            views = [p for m, p in self.tg.calls if m == "sendRichMessage" and "ephemeral_message_parameters" in p]
+            self.assertIn('"900"', json.dumps(views[-1]["rich_message"]))
 
     def test_refused_premium_edit_falls_back_to_standard_emoji(self):
         real = self.tg

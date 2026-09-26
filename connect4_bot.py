@@ -172,12 +172,27 @@ def render(game, premium=False):
     return cards.render(game, state["players"], premium)
 
 
+def is_private(chat_id):
+    return int(chat_id) > 0
+
+
+def premium_message(chat_id, game):
+    """Whether a regular (non-ephemeral) message here should carry custom emoji.
+
+    Private chats accept them when a message is sent and when it is edited. Groups and
+    channels show them in a newly sent message but refuse them in edits, so there only
+    the shared board, which is never edited, uses them; players get ephemeral copies.
+    """
+    return cards.has_custom_emoji() and (is_private(chat_id) or game["mode"] == "lobby")
+
+
 def send_card(chat_id, game):
-    """Send the card with custom emoji, or with standard emoji if Telegram refuses them."""
-    sent = tg.rich_send(chat_id, render(game, True))
-    if not sent and cards.has_custom_emoji():
-        sent = tg.rich_send(chat_id, render(game))
-    return sent
+    """Send the card, with custom emoji where they last, else with standard emoji."""
+    if premium_message(chat_id, game):
+        sent = tg.rich_send(chat_id, render(game, True))
+        if sent:
+            return sent
+    return tg.rich_send(chat_id, render(game))
 
 
 def retry_after():
@@ -199,8 +214,12 @@ def with_retry(call):
 
 
 def edit_card(chat_id, message_id, game):
+    if not premium_message(chat_id, game):
+        standard = render(game)
+        with_retry(lambda: tg.rich_edit(chat_id, message_id, standard))
+        return
     premium = render(game, True)
-    if with_retry(lambda: tg.rich_edit(chat_id, message_id, premium)) or not cards.has_custom_emoji():
+    if with_retry(lambda: tg.rich_edit(chat_id, message_id, premium)):
         return
     # Fall back to standard emoji only when Telegram refused the edit itself.
     if "not modified" not in tg.last_error and not retry_after():
