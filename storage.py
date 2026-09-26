@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-STATE_FILE = Path(__file__).resolve().parent / "state.json"
+STATE_FILE = Path(__file__).resolve().parent / "connect4_state.json"
 DEFAULTS = {
     "games": dict, "players": dict, "chat_players": dict, "channel_targets": dict,
     "pending": dict, "next_game": int, "offset": int, "channel": str, "channel_name": str,

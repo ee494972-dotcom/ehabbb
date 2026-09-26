@@ -29,15 +29,15 @@
 ```bash
 export CONNECT4_TOKEN="توكن البوت من BotFather"
 export CONNECT4_OWNER_ID="الـ ID بتاعك في تليجرام"   # اختياري
-python3 bot.py
+python3 connect4_bot.py
 ```
 
-- البوت بيحفظ كل حاجة في ملف `state.json` جنب الكود.
+- البوت بيحفظ كل حاجة في ملف `connect4_state.json` جنب الكود.
 - عشان البوت يرد على كلمة «اربعة» العادية في الجروبات، اقفل الـ Privacy Mode من BotFather بالأمر `/setprivacy`. أما الأوامر اللي بتبدأ بـ `/` فبتشتغل على طول.
 
 ## الملفات
 
-- `bot.py`: الأوامر والأزرار ومؤقت الدور.
+- `connect4_bot.py`: الأوامر والأزرار ومؤقت الدور.
 - `engine.py`: قواعد اللعبة والكمبيوتر (Minimax مع Alpha-Beta).
 - `cards.py`: شكل الرسايل والرقعة.
 - `telegram_api.py`: الاتصال بتليجرام.

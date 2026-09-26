@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import bot
+import connect4_bot as bot
 import engine
 import storage
 import telegram_api as tg
