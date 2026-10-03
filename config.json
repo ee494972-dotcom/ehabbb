@@ -1,0 +1,53 @@
+{
+  "game_config": {
+    "engine": "unreal_engine_4",
+    "platform": "android_emulator",
+    "game_name": "Your Game Name"
+  },
+
+  "memory_addresses": {
+    "gworld": "0x0",
+    "gnames": "0x0",
+    "gobjects": "0x0",
+    "note": "ضع العناوين الفعلية هنا بعد البحث في Cheat Engine"
+  },
+
+  "offsets": {
+    "persistent_level_offset": 48,
+    "actors_array_offset": 152,
+    "actor_location_offset": 288,
+    "root_component_offset": 160,
+    "actor_name_offset": 32,
+    "note": "قد تختلف حسب إصدار UE4"
+  },
+
+  "detection_settings": {
+    "max_detection_distance": 5000.0,
+    "screen_width": 1920,
+    "screen_height": 1080,
+    "enable_sudden_aim_change_detection": true,
+    "enable_distance_anomaly_detection": true,
+    "enable_impossible_visibility_detection": true,
+    "enable_angle_anomaly_detection": true,
+    "max_normal_view_distance": 3000.0,
+    "max_normal_angle_deviation": 45.0,
+    "detection_update_interval_ms": 500
+  },
+
+  "logging": {
+    "enable_console_output": true,
+    "enable_file_logging": true,
+    "log_file_path": "logs/detection_log.txt",
+    "log_level": "INFO",
+    "log_suspicious_activities": true,
+    "save_detection_history": true
+  },
+
+  "advanced": {
+    "enable_behavioral_analysis": false,
+    "enable_machine_learning_detection": false,
+    "detection_confidence_threshold": 0.7,
+    "false_positive_tolerance": 0.1,
+    "auto_update_offsets": false
+  }
+}
